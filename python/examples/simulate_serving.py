@@ -72,6 +72,39 @@ class ServingSimulator:
                 base = random.uniform(0.85, 0.99)
             self.link_utils[i] = min(base, 0.99)
 
+    def _route_static_nvlink(
+        self,
+        src_node: int,
+        dst_node: int,
+        size_bytes: int,
+    ) -> PathCost:
+        """Static-NVLink baseline: always prefer NVLink paths, ignore congestion."""
+        src = EndpointId(src_node, 0, EndpointType.GPU)
+        dst = EndpointId(dst_node, 0, EndpointType.GPU)
+        s = self.graph.vertex_of(src)
+        d = self.graph.vertex_of(dst)
+        if s is None or d is None:
+            return PathCost([], float("inf"))
+
+        from hics.types import edge_latency_us, FabricType
+
+        paths = self.graph.paths(s, d)
+        nvlink_paths = [
+            p for p in paths
+            if all(self.graph.edges[ei].attrs.fabric == FabricType.NVLINK for ei in p)
+        ]
+        chosen = nvlink_paths[0] if nvlink_paths else (paths[0] if paths else [])
+        if not chosen:
+            return PathCost([], float("inf"))
+
+        # Static routing ignores alternative paths even when congested
+        util = max(self.link_utils[ei] for ei in chosen) if chosen else 0.5
+        cost = sum(
+            edge_latency_us(self.graph.edges[ei].attrs, size_bytes, util)
+            for ei in chosen
+        )
+        return PathCost(chosen, cost)
+
     def _route(
         self,
         src_node: int,
@@ -91,7 +124,7 @@ class ServingSimulator:
         )
 
         if static_nvlink or not self.config.use_hics:
-            return self.engine.select_path(req, self.link_utils)
+            return self._route_static_nvlink(src_node, dst_node, size_bytes)
         self.engine.update_predictions(self.link_utils)
         return self.engine.select_path(req, self.link_utils)
 
