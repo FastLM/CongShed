@@ -103,7 +103,7 @@ double LSTMPredictor::cached_prediction(uint32_t edge_idx) const {
 
 double LSTMPredictor::effective_util(uint32_t edge_idx, double current_util,
                                       double transfer_duration_ms) const {
-    // max(u(t), û(t+δt)) per §V-C
+    // max(u(t), û(t+δt)) forward-looking utilization
     double predicted = cached_prediction(edge_idx);
     // Scale prediction by transfer duration / lookahead window
     double weight = std::min(transfer_duration_ms / PREDICT_AHEAD_MS, 1.0);

@@ -7,7 +7,7 @@
 
 namespace hics {
 
-// Lock-free ring buffer shared via mmap (§VI), 4 KB single page
+// Lock-free ring buffer shared via mmap, 4 KB single page
 static constexpr size_t TELEMETRY_RING_SIZE = 512;
 static constexpr size_t TELEMETRY_SAMPLE_HZ = 1000;
 
@@ -30,7 +30,7 @@ private:
     alignas(64) std::atomic<uint32_t> write_idx_{0};
 };
 
-// Hardware telemetry daemon (§VI): nvml, ibverbs MAD, PCIe PMU
+// Hardware telemetry daemon: nvml, ibverbs MAD, PCIe PMU
 class TelemetryDaemon {
 public:
     explicit TelemetryDaemon(size_t num_edges);

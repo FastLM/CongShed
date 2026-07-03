@@ -50,7 +50,7 @@ struct EdgeAttributes {
     FabricType fabric;
     double bandwidth_gbps;   // peak bandwidth (GB/s)
     double latency_us;       // baseline latency (µs)
-    double contention_alpha; // α from Eq. (1)
+    double contention_alpha;
 };
 
 struct TransferRequest {
@@ -66,7 +66,7 @@ struct PathCost {
     double latency_us;
 };
 
-// Fabric-specific contention exponents (§V-B)
+// Fabric-specific contention exponents
 inline double contention_exponent(FabricType fabric) {
     switch (fabric) {
         case FabricType::NVLink: return 1.4;

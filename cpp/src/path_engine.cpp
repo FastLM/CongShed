@@ -75,7 +75,7 @@ PathCost PathSelectionEngine::select_path(const TransferRequest& req,
 
     auto candidates = flexibility_set(graph_, src, dst, req.traffic_class);
 
-    // Algorithm 1 line 3-5: single path → no overhead
+    // Single path → no overhead
     if (candidates.size() <= 1) {
         if (candidates.empty()) return {{}, std::numeric_limits<double>::max()};
         double dur_ms = path_cost(candidates[0], req.size_bytes, 1.0) / 1000.0;
@@ -93,7 +93,7 @@ PathCost PathSelectionEngine::select_path(const TransferRequest& req,
         }
     }
 
-    // Algorithm 1 line 8-10: TP preemption
+    // TP preemption when deadline exceeded
     if (req.traffic_class == TrafficClass::TensorParallel &&
         best.latency_us > req.deadline_us) {
         preempt_kv_migrations(src, dst, best.edge_indices);
@@ -106,7 +106,7 @@ void PathSelectionEngine::preempt_kv_migrations(
     uint32_t src, uint32_t dst, const std::vector<uint32_t>& path_edges) {
     std::unordered_set<uint32_t> shared(path_edges.begin(), path_edges.end());
 
-    // Sort by slack descending — preempt largest slack first (§V-F)
+    // Sort by slack descending — preempt largest slack first
     std::sort(kv_flows_.begin(), kv_flows_.end(),
               [](const KVMigrationFlow& a, const KVMigrationFlow& b) {
                   return a.slack_us > b.slack_us;

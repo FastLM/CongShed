@@ -1,4 +1,4 @@
-"""Topology profiler: 200 ms startup sweep (§VI)."""
+"""Topology profiler: 200 ms startup sweep."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class ClusterProfile:
 class TopologyProfiler:
     """
     Runs a 200 ms profiling sweep at startup to populate
-    baseline bandwidth and latency measurements (§VI).
+    baseline bandwidth and latency measurements.
     """
 
     SWEEP_MS = 200

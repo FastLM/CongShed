@@ -1,6 +1,6 @@
 # CongShed — HICS Implementation
 
-**Heterogeneous Interconnect Congestion-aware Scheduler** for LLM serving, as described in the paper *Breaking the Interconnect Bottleneck in LLM Serving via Congestion-Aware Scheduling over Heterogeneous Interconnects*.
+**Heterogeneous Interconnect Congestion-aware Scheduler** for LLM serving.
 
 HICS is a runtime scheduling layer that:
 1. Builds a **latency-weighted topology graph** from hardware telemetry
@@ -33,13 +33,13 @@ Graph      Predictor      Engine
 
 ## Core Algorithm
 
-**Latency model (Eq. 1):**
+**Latency model:**
 
 ```
 λ_ij(s,t) = ℓ_ij + s / (B_ij · (1 - u_ij(t))^α)
 ```
 
-**Path selection (Algorithm 1):**
+**Path selection:**
 1. Compute routing flexibility set `F(t)` for traffic class
 2. Enumerate candidate paths (pre-computed k=6 shortest)
 3. Select path minimizing `Λ(P, σ, t)` using predicted utilization
@@ -87,7 +87,7 @@ from hics.trainer import CongestionTrainer
 trainer = CongestionTrainer.train_and_evaluate(epochs=10, export_path="weights/lstm_int8.bin")
 ```
 
-## Key Parameters (from paper)
+## Key Parameters
 
 | Parameter | Value |
 |-----------|-------|
@@ -109,18 +109,18 @@ HICS integrates without framework source changes:
 - **Startup**: 200 ms profiling sweep populates topology graph
 - **Runtime**: Telemetry daemon runs as `SCHED_FIFO` thread
 
-## Component Mapping (Paper → Code)
+## Component Mapping
 
-| Paper Section | C++ | Rust | Python |
-|---------------|-----|------|--------|
-| §V-B Topology Graph | `topology.hpp` | `topology.rs` | `topology.py` |
-| §V-C LSTM Predictor | `lstm_predictor.hpp` | `lstm_predictor.rs` | `lstm_model.py` |
-| §V-D Path Selection | `path_engine.hpp` | `path_engine.rs` | `path_engine.py` |
-| §V-F SLO Preemption | `path_engine.cpp` | `path_engine.rs` | `path_engine.py` |
-| §VI Telemetry | `telemetry.hpp` | `telemetry.rs` | — |
-| §VI NCCL Shim | `shim.hpp` | `shim.rs` | — |
-| §VI Training | — | — | `trainer.py` |
-| §VI Profiler | `shim.cpp` | `shim.rs` | `profiler.py` |
+| Component | C++ | Rust | Python |
+|-----------|-----|------|--------|
+| Topology Graph | `topology.hpp` | `topology.rs` | `topology.py` |
+| LSTM Predictor | `lstm_predictor.hpp` | `lstm_predictor.rs` | `lstm_model.py` |
+| Path Selection | `path_engine.hpp` | `path_engine.rs` | `path_engine.py` |
+| SLO Preemption | `path_engine.cpp` | `path_engine.rs` | `path_engine.py` |
+| Telemetry | `telemetry.hpp` | `telemetry.rs` | — |
+| NCCL Shim | `shim.hpp` | `shim.rs` | — |
+| Training | — | — | `trainer.py` |
+| Profiler | `shim.cpp` | `shim.rs` | `profiler.py` |
 
 ## License
 

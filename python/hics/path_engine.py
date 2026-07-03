@@ -1,4 +1,4 @@
-"""Algorithm 1: HICS path selection engine."""
+"""HICS path selection engine."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class PathSelectionEngine:
     def flexibility_set(
         self, src: int, dst: int, traffic_class: TrafficClass
     ) -> List[List[int]]:
-        """Definition 1: Routing Flexibility Set F(t)."""
+        """Routing Flexibility Set F(t)."""
         all_paths = self.graph.paths(src, dst)
         admissible: List[List[int]] = []
 
@@ -89,7 +89,7 @@ class PathSelectionEngine:
     def select_path(
         self, req: TransferRequest, current_utils: List[float]
     ) -> PathCost:
-        """Algorithm 1: HICS Path Selection."""
+        """HICS Path Selection."""
         self._utils = list(current_utils)
 
         src = self.graph.vertex_of(req.source)
@@ -124,7 +124,7 @@ class PathSelectionEngine:
         return best
 
     def _preempt_kv_migrations(self, path_edges: List[int]) -> None:
-        """SLO-aware preemption (§V-F)."""
+        """SLO-aware preemption."""
         self._kv_flows.sort(key=lambda f: f.slack_us, reverse=True)
         for flow in self._kv_flows:
             if not flow.paused and flow.bytes_remaining > 0:
@@ -136,7 +136,7 @@ class PathSelectionEngine:
         current_utils: List[float],
         chunk_size: int = 256 * 1024 * 1024,
     ) -> List[ChunkDispatch]:
-        """Multi-path KV striping with 256 MB chunks (§VI)."""
+        """Multi-path KV striping with 256 MB chunks."""
         dispatches: List[ChunkDispatch] = []
         remaining = req.size_bytes
         seq = 0

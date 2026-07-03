@@ -103,7 +103,7 @@ impl PathSelectionEngine {
         total
     }
 
-    /// Algorithm 1: HICS Path Selection
+    /// HICS Path Selection
     pub fn select_path(&mut self, req: &TransferRequest, current_utils: &[f32]) -> PathCost {
         self.utils = current_utils.to_vec();
 

@@ -1,4 +1,4 @@
-"""LSTM training pipeline with online Adagrad updates (§V-C)."""
+"""LSTM training pipeline with online Adagrad updates."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def generate_synthetic_trace(
 ) -> np.ndarray:
     """
     Synthetic link utilization trace mimicking KV migration bursts
-    and bimodal patterns from §III-IV.
+    and bimodal utilization patterns.
     """
     rng = np.random.default_rng(seed)
     trace = rng.uniform(0.3, 0.6, size=length_ms).astype(np.float32)
@@ -61,7 +61,7 @@ def generate_synthetic_trace(
         peak = rng.uniform(0.85, 0.99)
         trace[start : start + duration] = peak
 
-    # Diurnal pattern (Fig. 4)
+    # Diurnal utilization pattern
     for t in range(length_ms):
         hour = (t // 3600) % 24
         if 10 <= hour <= 18:
@@ -120,7 +120,7 @@ class CongestionTrainer:
     def online_update(
         self, history: list[float], target: float
     ) -> float:
-        """Single-step online update every 50 ms (§V-C)."""
+        """Single-step online update every 50 ms."""
         self.model.train()
         x = torch.tensor(history, dtype=torch.float32).view(1, HISTORY_LEN, 1)
         y = torch.tensor([[target]], dtype=torch.float32)

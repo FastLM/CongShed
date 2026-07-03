@@ -25,7 +25,7 @@ bool HICSShim::initialize(uint32_t num_nodes, uint32_t gpus_per_node) {
 }
 
 void HICSShim::run_profiling_sweep() {
-    // 200 ms profiling sweep to populate baseline bandwidth/latency (§VI)
+    // 200 ms profiling sweep to populate baseline bandwidth/latency
     using namespace std::chrono;
     auto start = steady_clock::now();
     while (duration_cast<milliseconds>(steady_clock::now() - start).count() < 200) {

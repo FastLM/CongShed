@@ -104,7 +104,7 @@ impl fmt::Display for FabricType {
     }
 }
 
-/// Eq. (1): λ_ij(s,t) = ℓ_ij + s / (B_ij · (1 - u_ij(t))^α)
+/// λ_ij(s,t) = ℓ_ij + s / (B_ij · (1 - u_ij(t))^α)
 pub fn edge_latency_us(attrs: &EdgeAttributes, size_bytes: u64, utilization: f64) -> f64 {
     let u = utilization.clamp(0.0, 0.99);
     let residual = 1.0 - u;

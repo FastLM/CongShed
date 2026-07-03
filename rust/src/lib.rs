@@ -1,6 +1,6 @@
 //! HICS — Heterogeneous Interconnect Congestion-aware Scheduler
 //!
-//! Rust implementation mirroring the C++ runtime described in the paper.
+//! Rust implementation mirroring the C++ runtime.
 
 pub mod lstm_predictor;
 pub mod path_engine;

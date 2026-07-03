@@ -9,7 +9,7 @@
 
 namespace hics {
 
-// NCCL/UCX interposition shim (§V-A, §VI)
+// NCCL/UCX interposition shim
 // Budget: <0.8 µs per decision
 class HICSShim {
 public:
@@ -26,7 +26,7 @@ public:
     int intercept_p2p(TrafficClass cls, EndpointId src, EndpointId dst,
                       uint64_t size_bytes, double deadline_us);
 
-    // Profiling sweep at startup (200 ms, §VI)
+    // Profiling sweep at startup (200 ms)
     void run_profiling_sweep();
 
     TelemetryDaemon& telemetry() { return *telemetry_; }

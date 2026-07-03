@@ -1,4 +1,4 @@
-"""Core types and latency model (Eq. 1)."""
+"""Core types and latency model."""
 
 from __future__ import annotations
 

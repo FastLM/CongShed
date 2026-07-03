@@ -7,7 +7,7 @@
 
 namespace hics {
 
-// 2-layer LSTM, 32 hidden units (§V-C, Table III)
+// 2-layer LSTM, 32 hidden units
 // Predicts utilization 5 ms ahead from K=16 samples at 1 ms intervals
 class LSTMPredictor {
 public:
@@ -18,10 +18,10 @@ public:
 
     LSTMPredictor();
 
-    // Load INT8-quantized weights exported from PyTorch (§VI)
+    // Load INT8-quantized weights exported from PyTorch
     bool load_weights(const std::string& path);
 
-    // Online update with Adagrad η=1e-3 every 50 ms (§V-C)
+    // Online update with Adagrad η=1e-3 every 50 ms
     void online_update(const std::vector<double>& history, double target);
 
     // Forward pass: predict utilization ∈ [0, 1]

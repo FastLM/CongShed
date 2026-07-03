@@ -1,4 +1,4 @@
-/// 2-layer LSTM, 32 hidden units — predicts utilization 5 ms ahead (§V-C)
+/// 2-layer LSTM, 32 hidden units — predicts utilization 5 ms ahead
 
 pub const HIDDEN_SIZE: usize = 32;
 pub const HISTORY_LEN: usize = 16;

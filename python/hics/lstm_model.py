@@ -1,4 +1,4 @@
-"""2-layer LSTM congestion predictor (§V-C, Table III)."""
+"""2-layer LSTM congestion predictor."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ SAMPLE_INTERVAL_MS = 1
 class CongestionLSTM(nn.Module):
     """
     Predicts link utilization 5 ms ahead from K=16 samples at 1 ms intervals.
-    Architecture: 2-layer LSTM, 32 hidden units (paper Table III).
+    Architecture: 2-layer LSTM, 32 hidden units.
     """
 
     def __init__(self, hidden_size: int = HIDDEN_SIZE, num_layers: int = 2):
@@ -51,7 +51,7 @@ class CongestionLSTM(nn.Module):
             return self.forward(x).item()
 
     def export_int8_weights(self, path: str | Path) -> None:
-        """Export INT8-quantized weights for C++/Rust runtime (§VI)."""
+        """Export INT8-quantized weights for C++/Rust runtime."""
         path = Path(path)
         state = self.state_dict()
 

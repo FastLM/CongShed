@@ -10,12 +10,12 @@
 
 namespace hics {
 
-// Definition 1: Routing Flexibility Set F(t)
+// Routing Flexibility Set F(t)
 std::vector<std::vector<uint32_t>> flexibility_set(
     const TopologyGraph& graph, uint32_t src, uint32_t dst,
     TrafficClass traffic_class);
 
-// Algorithm 1: HICS Path Selection
+// HICS Path Selection
 class PathSelectionEngine {
 public:
     PathSelectionEngine(TopologyGraph& graph, LSTMPredictor& predictor);
@@ -23,11 +23,11 @@ public:
     PathCost select_path(const TransferRequest& req,
                          const std::vector<float>& current_utils);
 
-    // SLO-aware preemption (§V-F): pause KV migrations on shared links
+    // SLO-aware preemption: pause KV migrations on shared links
     void preempt_kv_migrations(uint32_t src, uint32_t dst,
                                const std::vector<uint32_t>& path_edges);
 
-    // Multi-path KV striping: 256 MB chunks (§VI)
+    // Multi-path KV striping: 256 MB chunks
     struct ChunkDispatch {
         uint32_t chunk_seq;
         std::vector<uint32_t> edge_indices;

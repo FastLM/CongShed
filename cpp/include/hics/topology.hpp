@@ -13,7 +13,7 @@ struct GraphEdge {
     EdgeAttributes attrs;
 };
 
-// Latency model from Eq. (1): λ_ij(s,t) = ℓ_ij + s / (B_ij * (1 - u_ij(t))^α)
+// Latency model: λ_ij(s,t) = ℓ_ij + s / (B_ij * (1 - u_ij(t))^α)
 double edge_latency_us(const EdgeAttributes& attrs, uint64_t size_bytes,
                        double utilization);
 
@@ -25,13 +25,13 @@ public:
     const std::vector<EndpointId>& vertices() const { return vertices_; }
     const std::vector<GraphEdge>& edges() const { return edges_; }
 
-    // Lazy k-shortest path cache (k=6 default, §VI)
+    // Lazy k-shortest path cache (k=6 default)
     void precompute_paths(uint32_t k = 6, uint32_t max_hops = 5);
     const std::vector<std::vector<uint32_t>>& paths(uint32_t src, uint32_t dst) const;
 
     uint32_t vertex_of(const EndpointId& ep) const;
 
-    // Build default 8-GPU node topology (Fig. 2)
+    // Build default 8-GPU node topology
     static TopologyGraph build_h100_node(uint32_t node_id, uint32_t num_gpus = 8);
 
     // Build 64-GPU cluster (8 nodes × 8 GPUs)

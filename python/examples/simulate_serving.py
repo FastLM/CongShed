@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-End-to-end HICS serving simulation (§III, §VII).
+End-to-end HICS serving simulation.
 
 Simulates disaggregated prefill/decode with TP/PP/KV traffic classes
 under Poisson arrivals and compares static vs HICS routing.
@@ -63,7 +63,7 @@ class ServingSimulator:
         self.link_utils: List[float] = [0.0] * len(self.graph.edges)
 
     def _inject_congestion(self, t_ms: float) -> None:
-        """Simulate time-varying link load (§III-B, Fig. 4)."""
+        """Simulate time-varying link load."""
         hour = (t_ms / 3600_000) % 24
         peak_factor = 1.3 if 10 <= hour <= 18 else 0.8
         for i in range(len(self.link_utils)):
