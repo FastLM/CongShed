@@ -25,7 +25,7 @@ public:
     const std::vector<EndpointId>& vertices() const { return vertices_; }
     const std::vector<GraphEdge>& edges() const { return edges_; }
 
-    // Pre-computed k-shortest paths (k=6) per (src, dst) pair (§VI)
+    // Lazy k-shortest path cache (k=6 default, §VI)
     void precompute_paths(uint32_t k = 6, uint32_t max_hops = 5);
     const std::vector<std::vector<uint32_t>>& paths(uint32_t src, uint32_t dst) const;
 
@@ -40,7 +40,9 @@ public:
 private:
     std::vector<EndpointId> vertices_;
     std::vector<GraphEdge> edges_;
-    std::unordered_map<uint64_t, std::vector<std::vector<uint32_t>>> path_cache_;
+    mutable std::unordered_map<uint64_t, std::vector<std::vector<uint32_t>>> path_cache_;
+    uint32_t default_k_{6};
+    uint32_t default_max_hops_{5};
 
     static uint64_t path_key(uint32_t src, uint32_t dst) {
         return (static_cast<uint64_t>(src) << 32) | dst;

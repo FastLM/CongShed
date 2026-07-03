@@ -17,7 +17,7 @@ from typing import List
 
 from hics.path_engine import PathSelectionEngine
 from hics.profiler import TopologyProfiler
-from hics.trainer import CongestionTrainer, generate_synthetic_trace
+from hics.trainer import CongestionTrainer, UtilizationDataset, generate_synthetic_trace
 from hics.types import (
     EndpointId,
     EndpointType,
@@ -53,8 +53,11 @@ class ServingSimulator:
         profiler = TopologyProfiler(config.num_nodes, config.gpus_per_node)
         self.graph, self.profile = profiler.run_sweep()
 
-        trace = generate_synthetic_trace(int(config.duration_s * 1000))
-        trainer = CongestionTrainer.train_and_evaluate(trace, epochs=5)
+        trace = generate_synthetic_trace(int(config.duration_s * 1000) + 5000)
+        trainer = CongestionTrainer()
+        ds = UtilizationDataset(trace[:8000])
+        for _ in range(2):
+            trainer.train_epoch(ds, batch_size=128)
         self.engine = PathSelectionEngine(self.graph, trainer.model)
 
         self.link_utils: List[float] = [0.0] * len(self.graph.edges)

@@ -35,20 +35,19 @@ uint32_t TopologyGraph::vertex_of(const EndpointId& ep) const {
 }
 
 void TopologyGraph::precompute_paths(uint32_t k, uint32_t max_hops) {
-    path_cache_.clear();
-    const uint32_t n = static_cast<uint32_t>(vertices_.size());
-    for (uint32_t src = 0; src < n; ++src) {
-        for (uint32_t dst = 0; dst < n; ++dst) {
-            if (src == dst) continue;
-            path_cache_[path_key(src, dst)] = yen_k_shortest(src, dst, k, max_hops);
-        }
-    }
+    default_k_ = k;
+    default_max_hops_ = max_hops;
 }
 
 const std::vector<std::vector<uint32_t>>& TopologyGraph::paths(uint32_t src,
                                                                uint32_t dst) const {
     static const std::vector<std::vector<uint32_t>> empty;
-    auto it = path_cache_.find(path_key(src, dst));
+    auto key = path_key(src, dst);
+    auto it = path_cache_.find(key);
+    if (it == path_cache_.end()) {
+        path_cache_[key] = yen_k_shortest(src, dst, default_k_, default_max_hops_);
+        it = path_cache_.find(key);
+    }
     return it != path_cache_.end() ? it->second : empty;
 }
 

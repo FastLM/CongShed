@@ -26,6 +26,8 @@ class TopologyGraph:
         self._vertices: List[EndpointId] = []
         self._edges: List[GraphEdge] = []
         self._path_cache: Dict[Tuple[int, int], List[List[int]]] = {}
+        self._default_k = 6
+        self._default_max_hops = 5
 
     @property
     def vertices(self) -> List[EndpointId]:
@@ -50,17 +52,16 @@ class TopologyGraph:
         return None
 
     def paths(self, src: int, dst: int) -> List[List[int]]:
+        if (src, dst) not in self._path_cache:
+            self._path_cache[(src, dst)] = self._yen_k_shortest(
+                src, dst, self._default_k, self._default_max_hops
+            )
         return self._path_cache.get((src, dst), [])
 
     def precompute_paths(self, k: int = 6, max_hops: int = 5) -> None:
-        self._path_cache.clear()
-        n = len(self._vertices)
-        for src in range(n):
-            for dst in range(n):
-                if src != dst:
-                    self._path_cache[(src, dst)] = self._yen_k_shortest(
-                        src, dst, k, max_hops
-                    )
+        """Store defaults; paths are computed lazily on first access."""
+        self._default_k = k
+        self._default_max_hops = max_hops
 
     def _yen_k_shortest(
         self, src: int, dst: int, k: int, max_hops: int

@@ -81,7 +81,7 @@ impl PathSelectionEngine {
         }
 
         if admissible.is_empty() && traffic_class == TrafficClass::KVMigration {
-            return all_paths.to_vec();
+            return all_paths;
         }
         admissible
     }

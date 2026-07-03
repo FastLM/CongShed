@@ -1,5 +1,6 @@
 use crate::types::*;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone)]
 pub struct GraphEdge {
@@ -11,7 +12,9 @@ pub struct GraphEdge {
 pub struct TopologyGraph {
     vertices: Vec<EndpointId>,
     edges: Vec<GraphEdge>,
-    path_cache: HashMap<(u32, u32), Vec<Vec<u32>>>,
+    path_cache: RefCell<HashMap<(u32, u32), Vec<Vec<u32>>>>,
+    default_k: usize,
+    default_max_hops: usize,
 }
 
 impl TopologyGraph {
@@ -19,7 +22,9 @@ impl TopologyGraph {
         Self {
             vertices: Vec::new(),
             edges: Vec::new(),
-            path_cache: HashMap::new(),
+            path_cache: RefCell::new(HashMap::new()),
+            default_k: 6,
+            default_max_hops: 5,
         }
     }
 
@@ -52,26 +57,18 @@ impl TopologyGraph {
             .map(|i| i as u32)
     }
 
-    pub fn paths(&self, src: u32, dst: u32) -> &[Vec<u32>] {
-        static EMPTY: Vec<Vec<u32>> = Vec::new();
-        self.path_cache
-            .get(&(src, dst))
-            .map(|v| v.as_slice())
-            .unwrap_or(&EMPTY)
+    pub fn paths(&self, src: u32, dst: u32) -> Vec<Vec<u32>> {
+        let mut cache = self.path_cache.borrow_mut();
+        if !cache.contains_key(&(src, dst)) {
+            let paths = self.yen_k_shortest(src, dst, self.default_k, self.default_max_hops);
+            cache.insert((src, dst), paths);
+        }
+        cache.get(&(src, dst)).cloned().unwrap_or_default()
     }
 
     pub fn precompute_paths(&mut self, k: usize, max_hops: usize) {
-        self.path_cache.clear();
-        let n = self.vertices.len();
-        for src in 0..n {
-            for dst in 0..n {
-                if src == dst {
-                    continue;
-                }
-                let paths = self.yen_k_shortest(src as u32, dst as u32, k, max_hops);
-                self.path_cache.insert((src as u32, dst as u32), paths);
-            }
-        }
+        self.default_k = k;
+        self.default_max_hops = max_hops;
     }
 
     fn yen_k_shortest(&self, src: u32, dst: u32, k: usize, max_hops: usize) -> Vec<Vec<u32>> {
