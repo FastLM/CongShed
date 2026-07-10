@@ -75,7 +75,7 @@ inline double contention_exponent(FabricType fabric) {
     return 1.8;
 }
 
-// Default bandwidth/latency from Table I
+// Default fabric bandwidth/latency; override per deployment as needed.
 inline EdgeAttributes default_fabric_attrs(FabricType fabric) {
     switch (fabric) {
         case FabricType::NVLink:

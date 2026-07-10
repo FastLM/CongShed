@@ -63,6 +63,7 @@ impl FabricType {
         }
     }
 
+    /// Default fabric bandwidth/latency; override per deployment as needed.
     pub fn default_attrs(self) -> EdgeAttributes {
         match self {
             FabricType::NvLink => EdgeAttributes {

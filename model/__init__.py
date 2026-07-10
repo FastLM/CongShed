@@ -24,6 +24,7 @@ class FabricType(Enum):
 
     @classmethod
     def default_attrs(cls, fabric: "FabricType") -> "EdgeAttributes":
+        """Default bandwidth/latency; override per deployment as needed."""
         defaults = {
             FabricType.NVLINK: (900.0, 1.0),
             FabricType.PCIE: (64.0, 3.0),

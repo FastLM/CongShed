@@ -51,7 +51,7 @@ class TopologyProfiler:
         Microbenchmark a single edge. In production, this issues
         loopback transfers and reads hardware counters.
         """
-        # Simulated measurements based on Table I defaults
+        # Simulated measurements from current edge defaults (override as needed).
         attrs = edge.attrs
         bw = attrs.bandwidth_gbps * (0.95 + 0.05 * (hash(str(edge)) % 10) / 10)
         lat = attrs.latency_us * (0.9 + 0.1 * (hash(str(edge)) % 5) / 5)
