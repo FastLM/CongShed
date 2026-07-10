@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <vector>
-#include <vector>
 
 namespace hics {
 

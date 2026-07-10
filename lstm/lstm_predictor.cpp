@@ -1,4 +1,4 @@
-#include "hics/lstm_predictor.hpp"
+#include "lstm/lstm_predictor.hpp"
 
 #include <algorithm>
 #include <cmath>

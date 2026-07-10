@@ -1,4 +1,4 @@
-#include "hics/telemetry.hpp"
+#include "telemetry/telemetry.hpp"
 
 #include <chrono>
 #include <cstring>

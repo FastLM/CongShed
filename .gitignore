@@ -1,12 +1,17 @@
 # Compiled artifacts
-cpp/build/
-rust/target/
-python/*.egg-info/
-python/__pycache__/
-python/hics/__pycache__/
+build/
+target/
+*.egg-info/
+__pycache__/
+**/__pycache__/
 *.pt
 *.bin
 weights/
+hics_demo
+libhics_nccl.so
+*.so
+*.dylib
+*.a
 
 # IDE
 .idea/

@@ -17,7 +17,7 @@ from typing import List
 
 from hics.path_engine import PathSelectionEngine
 from hics.profiler import TopologyProfiler
-from hics.trainer import CongestionTrainer, UtilizationDataset, generate_synthetic_trace
+from hics.lstm.trainer import CongestionTrainer, UtilizationDataset, generate_synthetic_trace
 from hics.types import (
     EndpointId,
     EndpointType,

@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adagrad
 
-from hics.lstm_model import CongestionLSTM, HISTORY_LEN, PREDICT_AHEAD_MS
+from hics.lstm.lstm_model import CongestionLSTM, HISTORY_LEN, PREDICT_AHEAD_MS
 
 
 class UtilizationDataset:

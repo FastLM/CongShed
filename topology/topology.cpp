@@ -1,4 +1,4 @@
-#include "hics/topology.hpp"
+#include "topology/topology.hpp"
 
 #include <algorithm>
 #include <cmath>

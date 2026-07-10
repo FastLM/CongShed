@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
-from hics.lstm_model import CongestionLSTM, HISTORY_LEN, PredictorCache
+from hics.lstm.lstm_model import CongestionLSTM, HISTORY_LEN, PredictorCache
 from hics.topology import TopologyGraph
 from hics.types import (
     FabricType,

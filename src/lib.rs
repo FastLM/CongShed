@@ -2,15 +2,25 @@
 //!
 //! Rust implementation mirroring the C++ runtime.
 
-pub mod lstm_predictor;
-pub mod path_engine;
-pub mod telemetry;
-pub mod topology;
+#[path = "../model/model.rs"]
 pub mod types;
+
+#[path = "../topology/topology.rs"]
+pub mod topology;
+
+#[path = "../lstm/lstm_predictor.rs"]
+pub mod lstm_predictor;
+
+#[path = "../telemetry/telemetry.rs"]
+pub mod telemetry;
+
+#[path = "../path_engine/path_engine.rs"]
+pub mod path_engine;
+
+#[path = "../shim/shim.rs"]
+mod shim;
 
 pub use path_engine::PathSelectionEngine;
 pub use shim::HicsShim;
 pub use topology::TopologyGraph;
 pub use types::*;
-
-mod shim;

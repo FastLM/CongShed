@@ -1,8 +1,8 @@
 #pragma once
 
-#include "hics/lstm_predictor.hpp"
-#include "hics/topology.hpp"
-#include "hics/types.hpp"
+#include "lstm/lstm_predictor.hpp"
+#include "topology/topology.hpp"
+#include "model/model.hpp"
 
 #include <functional>
 #include <queue>

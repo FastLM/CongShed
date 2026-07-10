@@ -16,6 +16,20 @@ dev = ["pytest", "matplotlib"]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["hics*"]
+[tool.setuptools]
+packages = [
+    "hics",
+    "hics.types",
+    "hics.topology",
+    "hics.path_engine",
+    "hics.profiler",
+    "hics.lstm",
+]
+
+[tool.setuptools.package-dir]
+"hics" = "hics"
+"hics.types" = "model"
+"hics.topology" = "topology"
+"hics.path_engine" = "path_engine"
+"hics.profiler" = "profiler"
+"hics.lstm" = "lstm"

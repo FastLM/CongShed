@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hics/types.hpp"
+#include "model/model.hpp"
 
 #include <unordered_map>
 #include <vector>

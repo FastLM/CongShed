@@ -1,4 +1,4 @@
-# CongShed — HICS Implementation
+# CongShed Implementation
 
 **Heterogeneous Interconnect Congestion-aware Scheduler** for LLM serving.
 
@@ -25,11 +25,20 @@ Graph      Predictor      Engine
 
 ## Repository Layout
 
-| Directory | Role |
-|-----------|------|
-| `cpp/` | Production runtime: NCCL plugin, telemetry daemon, path engine, INT8 LSTM inference |
-| `rust/` | Memory-safe alternative runtime with identical scheduling logic |
-| `python/` | LSTM training pipeline, topology profiler, serving simulation |
+Organized by **module** (not by language). Each module holds C++ / Rust / Python implementations side by side:
+
+| Module | Role |
+|--------|------|
+| `model/` | Shared domain model (endpoints, fabrics, latency formula) |
+| `topology/` | Latency-weighted graph + Yen's k-shortest paths |
+| `lstm/` | INT8 inference (C++/Rust) + PyTorch training & weight export |
+| `path_engine/` | Routing, KV striping, SLO preemption |
+| `telemetry/` | 1 kHz ring-buffer collector daemon |
+| `shim/` | NCCL/UCX interposition + transfer dispatch |
+| `profiler/` | Startup topology profiling (Python) |
+| `apps/` | Demos: C++/Rust `main`, Python serving simulation |
+| `hics/` | Python package entry (`pip install -e .`) |
+| `src/` | Rust crate root (`lib.rs`) |
 
 ## Core Algorithm
 
@@ -50,7 +59,6 @@ Graph      Predictor      Engine
 ### C++
 
 ```bash
-cd cpp
 mkdir -p build && cd build
 cmake ..
 make -j
@@ -67,7 +75,6 @@ python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-3-70B
 ### Rust
 
 ```bash
-cd rust
 cargo build --release
 cargo run --release --bin hics-demo
 ```
@@ -75,15 +82,14 @@ cargo run --release --bin hics-demo
 ### Python
 
 ```bash
-cd python
 pip install -e .
-python examples/simulate_serving.py --lambda-rate 8 --duration 10
+python apps/simulate_serving.py --lambda-rate 8 --duration 10
 ```
 
 Train LSTM predictor and export INT8 weights for C++/Rust runtime:
 
 ```python
-from hics.trainer import CongestionTrainer
+from hics.lstm import CongestionTrainer
 trainer = CongestionTrainer.train_and_evaluate(epochs=10, export_path="weights/lstm_int8.bin")
 ```
 
@@ -113,14 +119,13 @@ HICS integrates without framework source changes:
 
 | Component | C++ | Rust | Python |
 |-----------|-----|------|--------|
-| Topology Graph | `topology.hpp` | `topology.rs` | `topology.py` |
-| LSTM Predictor | `lstm_predictor.hpp` | `lstm_predictor.rs` | `lstm_model.py` |
-| Path Selection | `path_engine.hpp` | `path_engine.rs` | `path_engine.py` |
-| SLO Preemption | `path_engine.cpp` | `path_engine.rs` | `path_engine.py` |
-| Telemetry | `telemetry.hpp` | `telemetry.rs` | — |
-| NCCL Shim | `shim.hpp` | `shim.rs` | — |
-| Training | — | — | `trainer.py` |
-| Profiler | `shim.cpp` | `shim.rs` | `profiler.py` |
+| Topology Graph | `topology/topology.hpp` | `topology/topology.rs` | `topology/` |
+| LSTM Predictor | `lstm/lstm_predictor.hpp` | `lstm/lstm_predictor.rs` | `lstm/lstm_model.py` |
+| Path Selection | `path_engine/path_engine.hpp` | `path_engine/path_engine.rs` | `path_engine/` |
+| Telemetry | `telemetry/telemetry.hpp` | `telemetry/telemetry.rs` | — |
+| NCCL Shim | `shim/shim.hpp` | `shim/shim.rs` | — |
+| Training | — | — | `lstm/trainer.py` |
+| Profiler | `shim/shim.cpp` | `shim/shim.rs` | `profiler/` |
 
 ## License
 

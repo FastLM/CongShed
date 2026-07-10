@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "hics-demo"
-path = "src/main.rs"
+path = "apps/main.rs"
 
 [dependencies]
 crossbeam-channel = "0.5"

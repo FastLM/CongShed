@@ -1,7 +1,7 @@
 #pragma once
 
-#include "hics/path_engine.hpp"
-#include "hics/telemetry.hpp"
+#include "path_engine/path_engine.hpp"
+#include "telemetry/telemetry.hpp"
 
 #include <chrono>
 #include <functional>
