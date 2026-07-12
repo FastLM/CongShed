@@ -33,8 +33,9 @@ Organized by **module** (not by language). Each module holds C++ / Rust / Python
 | `topology/` | Latency-weighted graph + Yen's k-shortest paths |
 | `lstm/` | INT8 inference (C++/Rust) + PyTorch training & weight export |
 | `path_engine/` | Routing, KV striping, SLO preemption |
-| `telemetry/` | 1 kHz ring-buffer collector daemon |
-| `shim/` | NCCL/UCX interposition + transfer dispatch |
+| `telemetry/` | 1 kHz ring-buffer daemon (NVML / IB sysfs / PCIe + synthetic fallback) |
+| `transfer/` | Transfer execution, preempt, reroute, byte-level progress |
+| `shim/` | NCCL `ncclNet_v8` plugin + UCX zcopy transport + dispatch |
 | `profiler/` | Startup topology profiling (Python) |
 | `apps/` | Demos: C++/Rust `main`, Python serving simulation |
 | `hics/` | Python package entry (`pip install -e .`) |
@@ -62,13 +63,14 @@ Organized by **module** (not by language). Each module holds C++ / Rust / Python
 mkdir -p build && cd build
 cmake ..
 make -j
-./hics_demo
+./hics_demo                        # optional: ./hics_demo ../weights/lstm_int8.bin
 ```
 
-NCCL plugin (drop-in via `LD_PRELOAD`):
+NCCL plugin (`ncclNetPlugin_v8` in `libhics_nccl.so`):
 
 ```bash
-export LD_PRELOAD=./libhics_nccl.so
+export NCCL_NET_PLUGIN=./libhics_nccl.so
+# or: export LD_PRELOAD=./libhics_nccl.so
 python -m vllm.entrypoints.openai.api_server --model meta-llama/Llama-3-70B
 ```
 
@@ -122,8 +124,10 @@ HICS integrates without framework source changes:
 | Topology Graph | `topology/topology.hpp` | `topology/topology.rs` | `topology/` |
 | LSTM Predictor | `lstm/lstm_predictor.hpp` | `lstm/lstm_predictor.rs` | `lstm/lstm_model.py` |
 | Path Selection | `path_engine/path_engine.hpp` | `path_engine/path_engine.rs` | `path_engine/` |
-| Telemetry | `telemetry/telemetry.hpp` | `telemetry/telemetry.rs` | — |
-| NCCL Shim | `shim/shim.hpp` | `shim/shim.rs` | — |
+| Transfer Exec | `transfer/transfer_executor.hpp` | — | — |
+| Telemetry | `telemetry/` (NVML/IB/PCIe) | `telemetry/telemetry.rs` | — |
+| NCCL Plugin | `shim/nccl_plugin.*` | — | — |
+| UCX Transport | `shim/ucx_transport.*` | — | — |
 | Training | — | — | `lstm/trainer.py` |
 | Profiler | `shim/shim.cpp` | `shim/shim.rs` | `profiler/` |
 

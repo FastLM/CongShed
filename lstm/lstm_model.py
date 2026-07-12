@@ -51,21 +51,43 @@ class CongestionLSTM(nn.Module):
             return self.forward(x).item()
 
     def export_int8_weights(self, path: str | Path) -> None:
-        """Export INT8-quantized weights for C++/Rust runtime."""
+        """Export INT8-quantized weights (HICSLSTM v2) for C++/Rust runtime."""
         path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         state = self.state_dict()
 
-        def quantize(tensor: torch.Tensor) -> tuple[bytes, bytes]:
-            scale = tensor.abs().max().item() / 127.0 or 1e-8
+        def quantize(tensor: torch.Tensor) -> tuple[bytes, float]:
+            scale = float(tensor.abs().max().item() / 127.0 or 1e-8)
             q = (tensor / scale).round().clamp(-127, 127).to(torch.int8)
-            return q.numpy().tobytes(), struct.pack("f", scale)
+            return q.contiguous().numpy().tobytes(), scale
 
         with open(path, "wb") as f:
-            for key in ["lstm.weight_ih_l0", "lstm.weight_hh_l0"]:
-                if key in state:
-                    qbytes, scale = quantize(state[key])
-                    f.write(qbytes)
-                    f.write(scale)
+            f.write(b"HICSLSTM")
+            f.write(struct.pack("<IIII", 2, HIDDEN_SIZE, 2, HISTORY_LEN))
+
+            for layer in range(2):
+                w_ih = state[f"lstm.weight_ih_l{layer}"]
+                w_hh = state[f"lstm.weight_hh_l{layer}"]
+                b_ih = state[f"lstm.bias_ih_l{layer}"].detach().cpu().float().numpy()
+                b_hh = state[f"lstm.bias_hh_l{layer}"].detach().cpu().float().numpy()
+                input_size = 1 if layer == 0 else HIDDEN_SIZE
+                rows = 4 * HIDDEN_SIZE
+                f.write(struct.pack("<II", input_size, rows))
+                q_ih, s_ih = quantize(w_ih)
+                f.write(q_ih)
+                f.write(struct.pack("<f", s_ih))
+                q_hh, s_hh = quantize(w_hh)
+                f.write(q_hh)
+                f.write(struct.pack("<f", s_hh))
+                f.write(b_ih.astype("<f4").tobytes())
+                f.write(b_hh.astype("<f4").tobytes())
+
+            head_w = state["head.weight"].view(-1)
+            head_b = float(state["head.bias"].item())
+            q_h, s_h = quantize(head_w)
+            f.write(struct.pack("<I", HIDDEN_SIZE))
+            f.write(q_h)
+            f.write(struct.pack("<ff", s_h, head_b))
 
     @classmethod
     def load_from_checkpoint(cls, path: str | Path) -> "CongestionLSTM":
