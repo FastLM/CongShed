@@ -25,8 +25,6 @@ Graph      Predictor      Engine
 
 ## Repository Layout
 
-Organized by **module** (not by language). Each module holds C++ / Rust / Python implementations side by side:
-
 | Module | Role |
 |--------|------|
 | `model/` | Shared domain model (endpoints, fabrics, latency formula) |
@@ -88,7 +86,7 @@ pip install -e .
 python apps/simulate_serving.py --lambda-rate 8 --duration 10
 ```
 
-Train LSTM predictor and export INT8 weights for C++/Rust runtime:
+Train predictor and export INT8 weights for C++/Rust runtime:
 
 ```python
 from hics.lstm import CongestionTrainer
