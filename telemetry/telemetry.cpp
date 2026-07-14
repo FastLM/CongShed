@@ -1,4 +1,6 @@
 #include "telemetry/telemetry.hpp"
+#include "telemetry/ib_mad.hpp"
+#include "telemetry/pmu_counters.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -83,15 +85,23 @@ void TelemetryDaemon::select_backends() {
         case TelemetryBackendKind::Ibverbs:
             try_add(make_ibverbs_backend());
             break;
+        case TelemetryBackendKind::IbMad:
+            try_add(make_ib_mad_backend());
+            break;
         case TelemetryBackendKind::PcieSysfs:
             try_add(make_pcie_sysfs_backend());
+            break;
+        case TelemetryBackendKind::Pmu:
+            try_add(make_pmu_backend());
             break;
         case TelemetryBackendKind::Synthetic:
             break;
         case TelemetryBackendKind::Auto:
         default:
             try_add(make_nvml_backend());
+            try_add(make_ib_mad_backend());   // MAD first, sysfs fallback inside
             try_add(make_ibverbs_backend());
+            try_add(make_pmu_backend());      // uncore / NVML PCIe
             try_add(make_pcie_sysfs_backend());
             break;
     }
@@ -154,9 +164,13 @@ float TelemetryDaemon::read_edge_util(uint32_t edge_idx) {
         const char* n = b->name();
         const bool match =
             (fabric == FabricType::NVLink && std::strcmp(n, "nvml") == 0) ||
-            (fabric == FabricType::InfiniBand && std::strcmp(n, "ibverbs_sysfs") == 0) ||
+            (fabric == FabricType::InfiniBand &&
+             (std::strcmp(n, "ib_mad") == 0 || std::strcmp(n, "ib_sysfs") == 0 ||
+              std::strcmp(n, "ibverbs_sysfs") == 0)) ||
             ((fabric == FabricType::PCIe || fabric == FabricType::CXL) &&
-             (std::strcmp(n, "pcie_sysfs") == 0 || std::strcmp(n, "nvml") == 0));
+             (std::strcmp(n, "perf_uncore") == 0 || std::strcmp(n, "sysfs_uncore") == 0 ||
+              std::strcmp(n, "nvml_pcie") == 0 || std::strcmp(n, "pmu") == 0 ||
+              std::strcmp(n, "pcie_sysfs") == 0 || std::strcmp(n, "nvml") == 0));
         if (!match && backends_.size() > 1) continue;
         if (b->sample(edge_idx, util)) {
             got = true;

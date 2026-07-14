@@ -10,9 +10,12 @@ set(HICS_SOURCES
     topology/topology.cpp
     lstm/lstm_predictor.cpp
     telemetry/hw_counters.cpp
+    telemetry/ib_mad.cpp
+    telemetry/pmu_counters.cpp
     telemetry/telemetry.cpp
     path_engine/path_engine.cpp
     transfer/transfer_executor.cpp
+    shim/cuda_mr.cpp
     shim/shim.cpp
     shim/ucx_transport.cpp
     shim/nccl_plugin.cpp

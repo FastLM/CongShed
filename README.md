@@ -123,8 +123,8 @@ HICS integrates without framework source changes:
 | LSTM Predictor | `lstm/lstm_predictor.hpp` | `lstm/lstm_predictor.rs` | `lstm/lstm_model.py` |
 | Path Selection | `path_engine/path_engine.hpp` | `path_engine/path_engine.rs` | `path_engine/` |
 | Transfer Exec | `transfer/transfer_executor.hpp` | — | — |
-| Telemetry | `telemetry/` (NVML/IB/PCIe) | `telemetry/telemetry.rs` | — |
-| NCCL Plugin | `shim/nccl_plugin.*` | — | — |
+| Telemetry | `telemetry/` (NVML, IB MAD, uncore PMU) | `telemetry/telemetry.rs` | — |
+| NCCL Plugin | `shim/nccl_plugin.*` + `cuda_mr.*` | — | — |
 | UCX Transport | `shim/ucx_transport.*` | — | — |
 | Training | — | — | `lstm/trainer.py` |
 | Profiler | `shim/shim.cpp` | `shim/shim.rs` | `profiler/` |

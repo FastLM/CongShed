@@ -1,4 +1,5 @@
 #include "shim/nccl_plugin.hpp"
+#include "shim/cuda_mr.hpp"
 #include "shim/shim.hpp"
 
 #include <atomic>
@@ -24,6 +25,9 @@ struct PluginRequest {
     size_t size{0};
     bool done{false};
     int result_size{0};
+    void* mhandle{nullptr};
+    void* data{nullptr};
+    bool is_cuda{false};
 };
 
 std::mutex g_mu;
@@ -39,7 +43,6 @@ EndpointId gpu_ep(int rank) {
 }
 
 TrafficClass classify_tag(int tag, size_t size) {
-    // Convention: low tags = collectives (TP/PP), high / large = KV
     if (size >= (256ull * 1024ull * 1024ull)) return TrafficClass::KVMigration;
     if (tag >= 1000) return TrafficClass::KVMigration;
     if (tag >= 100) return TrafficClass::PipelineParallel;
@@ -70,13 +73,15 @@ namespace {
 ncclResult_t plugin_init(ncclDebugLogger_t logFunction) {
     g_logger = logFunction;
     if (!nccl_plugin_bootstrap(nullptr)) return ncclInternalError;
+    // Touch CUDA runtime early so ptrSupport reflects reality
+    (void)CudaRuntime::instance().available();
     log_info("HICS NCCL net plugin initialized");
     return ncclSuccess;
 }
 
 ncclResult_t plugin_devices(int* ndev) {
     if (!ndev) return ncclInvalidArgument;
-    *ndev = 1;  // single logical HICS net device; topology is internal
+    *ndev = 1;
     return ncclSuccess;
 }
 
@@ -86,12 +91,12 @@ ncclResult_t plugin_getProperties(int /*dev*/, ncclNetProperties_v8* props) {
     static char pci[] = "";
     props->name = name;
     props->pciPath = pci;
-    props->guid = 0x48494353ull;  // 'HICS'
-    props->ptrSupport = NCCL_PTR_HOST | NCCL_PTR_CUDA;
+    props->guid = 0x48494353ull;
+    props->ptrSupport = MemoryRegistry::instance().supported_ptr_types();
     props->regIsGlobal = 0;
-    props->speed = 400000;  // Mbps advertised
+    props->speed = 400000;
     props->port = 0;
-    props->latency = 0.8f;  // µs decision budget
+    props->latency = 0.8f;
     props->maxComms = 65536;
     props->maxRecvs = 64;
     props->netDeviceType = 0;
@@ -139,20 +144,42 @@ ncclResult_t plugin_accept(void* listenComm, void** recvComm, void** recvDevComm
     return ncclSuccess;
 }
 
-ncclResult_t plugin_regMr(void* /*comm*/, void* /*data*/, size_t /*size*/, int /*type*/,
+ncclResult_t plugin_regMr(void* /*comm*/, void* data, size_t size, int type,
                           void** mhandle) {
-    if (mhandle) *mhandle = reinterpret_cast<void*>(0x1);
+    if (!mhandle || !data || size == 0) return ncclInvalidArgument;
+    void* handle = MemoryRegistry::instance().register_mr(data, size, type);
+    if (!handle) return ncclSystemError;
+    *mhandle = handle;
     return ncclSuccess;
 }
 
-ncclResult_t plugin_deregMr(void* /*comm*/, void* /*mhandle*/) { return ncclSuccess; }
+ncclResult_t plugin_deregMr(void* /*comm*/, void* mhandle) {
+    if (!mhandle) return ncclSuccess;
+    return MemoryRegistry::instance().deregister_mr(mhandle) ? ncclSuccess
+                                                             : ncclInvalidArgument;
+}
 
 ncclResult_t plugin_isend(void* sendComm, void* data, size_t size, int tag,
-                          void* /*mhandle*/, void** request) {
+                          void* mhandle, void** request) {
     if (!sendComm || !request) return ncclInvalidArgument;
-    (void)data;
     std::lock_guard<std::mutex> lock(g_mu);
     if (!g_shim) return ncclInternalError;
+
+    // Validate MR when provided; allow unregistered host for small msgs
+    bool is_cuda = false;
+    if (mhandle) {
+        MemoryRegion mr;
+        if (!MemoryRegistry::instance().get_mr(mhandle, mr)) return ncclInvalidUsage;
+        is_cuda = (mr.type == MrPtrType::Cuda);
+        if (mr.addr != data && data != nullptr) {
+            auto* base = static_cast<uint8_t*>(mr.addr);
+            auto* ptr = static_cast<uint8_t*>(data);
+            if (ptr < base || ptr + size > base + mr.size) return ncclInvalidArgument;
+        }
+    } else if (data) {
+        int dev = -1;
+        is_cuda = CudaRuntime::instance().is_device_pointer(data, &dev);
+    }
 
     auto* comm = static_cast<PluginComm*>(sendComm);
     const TrafficClass cls = classify_tag(tag, size);
@@ -163,34 +190,53 @@ ncclResult_t plugin_isend(void* sendComm, void* data, size_t size, int tag,
         cls, gpu_ep(comm->local_gpu), gpu_ep(comm->peer_rank), size, deadline);
 
     const uint64_t rid = g_req_ids.fetch_add(1);
-    g_requests[rid] = PluginRequest{tid, size, false, static_cast<int>(size)};
+    g_requests[rid] =
+        PluginRequest{tid, size, false, static_cast<int>(size), mhandle, data, is_cuda};
     *request = reinterpret_cast<void*>(rid);
     return ncclSuccess;
 }
 
 ncclResult_t plugin_irecv(void* recvComm, int n, void** data, size_t* sizes, int* tags,
-                          void** /*mhandles*/, void** request) {
+                          void** mhandles, void** request) {
     if (!recvComm || !request || n < 1) return ncclInvalidArgument;
-    (void)data;
     std::lock_guard<std::mutex> lock(g_mu);
     if (!g_shim) return ncclInternalError;
 
     auto* comm = static_cast<PluginComm*>(recvComm);
     size_t size = sizes ? sizes[0] : 0;
     int tag = tags ? tags[0] : 0;
+    void* mhandle = (mhandles && mhandles[0]) ? mhandles[0] : nullptr;
+    void* buf = (data && data[0]) ? data[0] : nullptr;
+
+    bool is_cuda = false;
+    if (mhandle) {
+        MemoryRegion mr;
+        if (!MemoryRegistry::instance().get_mr(mhandle, mr)) return ncclInvalidUsage;
+        is_cuda = (mr.type == MrPtrType::Cuda);
+    } else if (buf) {
+        int dev = -1;
+        is_cuda = CudaRuntime::instance().is_device_pointer(buf, &dev);
+    }
+
     const TrafficClass cls = classify_tag(tag, size);
     TransferId tid = g_shim->submit_transfer(
         cls, gpu_ep(comm->peer_rank), gpu_ep(comm->local_gpu), size,
         cls == TrafficClass::TensorParallel ? 50.0 : 5e4);
 
     const uint64_t rid = g_req_ids.fetch_add(1);
-    g_requests[rid] = PluginRequest{tid, size, false, static_cast<int>(size)};
+    g_requests[rid] =
+        PluginRequest{tid, size, false, static_cast<int>(size), mhandle, buf, is_cuda};
     *request = reinterpret_cast<void*>(rid);
     return ncclSuccess;
 }
 
-ncclResult_t plugin_iflush(void* /*recvComm*/, int /*n*/, void** /*data*/, int* /*sizes*/,
-                           void** /*mhandles*/, void** request) {
+ncclResult_t plugin_iflush(void* /*recvComm*/, int n, void** /*data*/, int* /*sizes*/,
+                           void** mhandles, void** request) {
+    // Ensure CUDA writes are visible to host / peer before NCCL completes recv
+    for (int i = 0; i < n; ++i) {
+        void* mh = (mhandles && mhandles[i]) ? mhandles[i] : nullptr;
+        MemoryRegistry::instance().flush(mh);
+    }
     if (request) *request = reinterpret_cast<void*>(0);
     return ncclSuccess;
 }
@@ -213,6 +259,10 @@ ncclResult_t plugin_test(void* request, int* done, int* sizes) {
     if (prog.state == TransferState::Completed ||
         prog.state == TransferState::Cancelled ||
         prog.bytes_remaining == 0) {
+        // CUDA path: sync before reporting done so consumer sees data
+        if (it->second.is_cuda || it->second.mhandle) {
+            MemoryRegistry::instance().flush(it->second.mhandle);
+        }
         it->second.done = true;
         *done = 1;
         if (sizes) sizes[0] = it->second.result_size;
