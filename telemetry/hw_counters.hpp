@@ -50,9 +50,11 @@ std::unique_ptr<HwCounterBackend> make_synthetic_backend();
 std::unique_ptr<HwCounterBackend> make_ib_mad_backend();
 std::unique_ptr<HwCounterBackend> make_pmu_backend();
 
-// Build default bindings from topology fabric attributes
+// Build default bindings from topology fabric attributes.
+// `rail_ids[i]` maps edge i → IB rail (0/1); empty → discover mlx5_* round-robin.
 std::vector<EdgeHwBinding> bindings_from_fabrics(
     const std::vector<FabricType>& fabrics,
-    const std::vector<double>& peak_bw_gbps);
+    const std::vector<double>& peak_bw_gbps,
+    const std::vector<int>& rail_ids = {});
 
 }  // namespace hics

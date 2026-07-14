@@ -35,7 +35,24 @@ bool read_u64_file(const std::string& path, uint64_t& out) {
 
 std::vector<EdgeHwBinding> bindings_from_fabrics(
     const std::vector<FabricType>& fabrics,
-    const std::vector<double>& peak_bw_gbps) {
+    const std::vector<double>& peak_bw_gbps,
+    const std::vector<int>& rail_ids) {
+    std::vector<std::string> ib_devs;
+#if defined(__linux__)
+    {
+        DIR* d = opendir("/sys/class/infiniband");
+        if (d) {
+            while (auto* ent = readdir(d)) {
+                if (ent->d_name[0] == '.') continue;
+                ib_devs.emplace_back(ent->d_name);
+            }
+            closedir(d);
+            std::sort(ib_devs.begin(), ib_devs.end());
+        }
+    }
+#endif
+    if (ib_devs.empty()) ib_devs = {"mlx5_0", "mlx5_1"};
+
     std::vector<EdgeHwBinding> out;
     out.reserve(fabrics.size());
     for (size_t i = 0; i < fabrics.size(); ++i) {
@@ -43,14 +60,21 @@ std::vector<EdgeHwBinding> bindings_from_fabrics(
         b.edge_idx = static_cast<uint32_t>(i);
         b.fabric = fabrics[i];
         b.peak_bw_gbps = i < peak_bw_gbps.size() ? peak_bw_gbps[i] : 50.0;
-        // Heuristic device mapping — refined by NVML/IB discovery when present
         b.gpu_a = static_cast<int>(i % 8);
         b.gpu_b = static_cast<int>((i + 1) % 8);
         b.nvlink_id = static_cast<int>(i % 18);
-        b.ib_device = "mlx5_0";
+
+        int rail = 0;
+        if (i < rail_ids.size() && rail_ids[i] >= 0) {
+            rail = rail_ids[i] % static_cast<int>(ib_devs.size());
+        } else if (fabrics[i] == FabricType::InfiniBand) {
+            rail = static_cast<int>(i % ib_devs.size());
+        }
+        b.ib_device = ib_devs[static_cast<size_t>(rail)];
         b.ib_port = 1;
-        char pci[64];
-        std::snprintf(pci, sizeof(pci), "/sys/class/infiniband/mlx5_0/ports/1");
+        char pci[96];
+        std::snprintf(pci, sizeof(pci), "/sys/class/infiniband/%s/ports/1",
+                      b.ib_device.c_str());
         b.pci_sysfs = pci;
         out.push_back(std::move(b));
     }

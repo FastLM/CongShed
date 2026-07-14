@@ -38,9 +38,11 @@ public:
     int intercept_p2p(TrafficClass cls, EndpointId src, EndpointId dst,
                       uint64_t size_bytes, double deadline_us);
 
-    // Schedule + execute a transfer; returns transfer id
+    // Schedule + execute a transfer; returns transfer id.
+    // Optional src/dst enable real KV buffer movement (ibverbs / memcpy).
     TransferId submit_transfer(TrafficClass cls, EndpointId src, EndpointId dst,
-                               uint64_t size_bytes, double deadline_us);
+                               uint64_t size_bytes, double deadline_us,
+                               void* src_buf = nullptr, void* dst_buf = nullptr);
 
     // Progress in-flight transfers by dt_ms; returns completions
     size_t poll_transfers(double dt_ms = 0.2);

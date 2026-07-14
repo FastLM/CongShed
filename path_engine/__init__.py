@@ -21,6 +21,8 @@ class ChunkDispatch:
     chunk_seq: int
     edge_indices: List[int]
     chunk_size: int
+    byte_offset: int = 0
+    rail_id: int = -1
 
 
 @dataclass
@@ -136,10 +138,12 @@ class PathSelectionEngine:
         current_utils: List[float],
         chunk_size: int = 256 * 1024 * 1024,
     ) -> List[ChunkDispatch]:
-        """Multi-path KV striping with 256 MB chunks."""
+        """Multi-path KV striping with 256 MB chunks + telemetry rail bias."""
         dispatches: List[ChunkDispatch] = []
         remaining = req.size_bytes
         seq = 0
+        offset = 0
+        utils = list(current_utils)
 
         while remaining > 0:
             this_chunk = min(remaining, chunk_size)
@@ -150,10 +154,21 @@ class PathSelectionEngine:
                 traffic_class=req.traffic_class,
                 deadline_us=req.deadline_us,
             )
-            path = self.select_path(chunk_req, current_utils)
+            path = self.select_path(chunk_req, utils)
+            rail = -1
+            for ei in path.edge_indices:
+                if ei < len(self.graph.edges):
+                    r = getattr(self.graph.edges[ei].attrs, "rail_id", -1)
+                    if r is not None and r >= 0:
+                        rail = int(r)
+                        break
             dispatches.append(
-                ChunkDispatch(seq, path.edge_indices, this_chunk)
+                ChunkDispatch(seq, path.edge_indices, this_chunk, offset, rail)
             )
+            for ei in path.edge_indices:
+                if ei < len(utils):
+                    utils[ei] = min(0.99, utils[ei] + 0.05)
             seq += 1
+            offset += this_chunk
             remaining -= this_chunk
         return dispatches

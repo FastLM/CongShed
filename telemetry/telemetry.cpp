@@ -6,6 +6,11 @@
 #include <chrono>
 #include <cstring>
 
+#if defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
+
 namespace hics {
 
 TelemetryRingBuffer::TelemetryRingBuffer() { buffer_.fill({0, 0, 0.0f}); }
@@ -50,18 +55,20 @@ TelemetryDaemon::TelemetryDaemon(size_t num_edges, TelemetryConfig config)
 TelemetryDaemon::~TelemetryDaemon() { stop(); }
 
 void TelemetryDaemon::configure_edges(const std::vector<FabricType>& fabrics,
-                                      const std::vector<double>& peak_bw_gbps) {
+                                      const std::vector<double>& peak_bw_gbps,
+                                      const std::vector<int>& rail_ids) {
     std::lock_guard<std::mutex> lock(mu_);
-    bindings_ = bindings_from_fabrics(fabrics, peak_bw_gbps);
+    bindings_ = bindings_from_fabrics(fabrics, peak_bw_gbps, rail_ids);
     if (bindings_.size() < num_edges_) {
-        // Pad with IB defaults
         std::vector<FabricType> f = fabrics;
         std::vector<double> bw = peak_bw_gbps;
+        std::vector<int> rails = rail_ids;
         while (f.size() < num_edges_) {
             f.push_back(FabricType::InfiniBand);
             bw.push_back(50.0);
+            rails.push_back(static_cast<int>(f.size() % 2));
         }
-        bindings_ = bindings_from_fabrics(f, bw);
+        bindings_ = bindings_from_fabrics(f, bw, rails);
     }
     select_backends();
 }
@@ -124,10 +131,20 @@ void TelemetryDaemon::start() {
     if (bindings_.empty()) {
         std::vector<FabricType> fabrics(num_edges_, FabricType::InfiniBand);
         std::vector<double> bw(num_edges_, 50.0);
-        configure_edges(fabrics, bw);
+        std::vector<int> rails(num_edges_);
+        for (size_t i = 0; i < num_edges_; ++i) rails[i] = static_cast<int>(i % 2);
+        configure_edges(fabrics, bw, rails);
     }
     if (running_.exchange(true)) return;
-    collector_thread_ = std::thread([this] { collect_loop(); });
+    collector_thread_ = std::thread([this] {
+#if defined(__linux__)
+        // Best-effort real-time scheduling for 1 kHz sampling
+        struct sched_param sp {};
+        sp.sched_priority = 10;
+        (void)pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+#endif
+        collect_loop();
+    });
 }
 
 void TelemetryDaemon::stop() {

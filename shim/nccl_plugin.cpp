@@ -1,7 +1,9 @@
 #include "shim/nccl_plugin.hpp"
 #include "shim/cuda_mr.hpp"
+#include "shim/ibverbs_transport.hpp"
 #include "shim/shim.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -14,9 +16,12 @@
 namespace hics {
 namespace {
 
+constexpr int kPluginRails = kIbRailCount;
+
 struct PluginComm {
     int peer_rank{0};
     int local_gpu{0};
+    int rail{0};  // NCCL device index → IB rail
     bool is_send{true};
 };
 
@@ -27,7 +32,9 @@ struct PluginRequest {
     int result_size{0};
     void* mhandle{nullptr};
     void* data{nullptr};
+    void* peer_buf{nullptr};
     bool is_cuda{false};
+    int rail{0};
 };
 
 std::mutex g_mu;
@@ -81,21 +88,32 @@ ncclResult_t plugin_init(ncclDebugLogger_t logFunction) {
 
 ncclResult_t plugin_devices(int* ndev) {
     if (!ndev) return ncclInvalidArgument;
-    *ndev = 1;
+    // Dual NIC / dual IB rail exposed as two NCCL net devices
+    auto& ib = IbverbsTransport::instance();
+    if (!ib.available()) ib.init(kPluginRails);
+    *ndev = std::max(1, ib.rail_count());
     return ncclSuccess;
 }
 
-ncclResult_t plugin_getProperties(int /*dev*/, ncclNetProperties_v8* props) {
+ncclResult_t plugin_getProperties(int dev, ncclNetProperties_v8* props) {
     if (!props) return ncclInvalidArgument;
-    static char name[] = "hics";
-    static char pci[] = "";
-    props->name = name;
-    props->pciPath = pci;
-    props->guid = 0x48494353ull;
+    static char names[kPluginRails][32] = {"hics_rail0", "hics_rail1"};
+    static char pcis[kPluginRails][96] = {};
+    auto& ib = IbverbsTransport::instance();
+    if (!ib.available()) ib.init(kPluginRails);
+    const int rail = std::max(0, std::min(dev, kPluginRails - 1));
+    if (rail < static_cast<int>(ib.devices().size())) {
+        std::snprintf(pcis[rail], sizeof(pcis[rail]),
+                      "/sys/class/infiniband/%s/device",
+                      ib.devices()[static_cast<size_t>(rail)].name.c_str());
+    }
+    props->name = names[rail];
+    props->pciPath = pcis[rail];
+    props->guid = 0x4849435300000000ull | static_cast<uint64_t>(rail);
     props->ptrSupport = MemoryRegistry::instance().supported_ptr_types();
     props->regIsGlobal = 0;
     props->speed = 400000;
-    props->port = 0;
+    props->port = rail;
     props->latency = 0.8f;
     props->maxComms = 65536;
     props->maxRecvs = 64;
@@ -104,29 +122,32 @@ ncclResult_t plugin_getProperties(int /*dev*/, ncclNetProperties_v8* props) {
     return ncclSuccess;
 }
 
-ncclResult_t plugin_listen(int /*dev*/, void* handle, void** listenComm) {
+ncclResult_t plugin_listen(int dev, void* handle, void** listenComm) {
     if (!listenComm) return ncclInvalidArgument;
     auto* comm = new PluginComm{};
     comm->is_send = false;
+    comm->rail = std::max(0, dev);
     if (handle) {
         auto* h = static_cast<ncclNetHandle_t*>(handle);
-        std::snprintf(h->name, sizeof(h->name), "hics");
+        std::snprintf(h->name, sizeof(h->name), "hics_rail%d", comm->rail);
         h->ptr = comm;
     }
     *listenComm = comm;
     return ncclSuccess;
 }
 
-ncclResult_t plugin_connect(int /*dev*/, void* handle, void** sendComm,
+ncclResult_t plugin_connect(int dev, void* handle, void** sendComm,
                             void** sendDevComm) {
     if (!sendComm) return ncclInvalidArgument;
     auto* comm = new PluginComm{};
     comm->is_send = true;
+    comm->rail = std::max(0, dev);
     if (handle) {
         auto* h = static_cast<ncclNetHandle_t*>(handle);
         if (h->ptr) {
             auto* listen = static_cast<PluginComm*>(h->ptr);
             comm->peer_rank = listen->local_gpu;
+            if (listen->rail >= 0) comm->rail = listen->rail;
         }
     }
     *sendComm = comm;
@@ -186,12 +207,15 @@ ncclResult_t plugin_isend(void* sendComm, void* data, size_t size, int tag,
     const double deadline =
         (cls == TrafficClass::TensorParallel) ? 50.0 : 5e4;
 
+    // Real KV path: bind source buffer; peer fill happens on matching irecv
+    // via staging when both ends are host-visible in the same process (demo).
     TransferId tid = g_shim->submit_transfer(
-        cls, gpu_ep(comm->local_gpu), gpu_ep(comm->peer_rank), size, deadline);
+        cls, gpu_ep(comm->local_gpu), gpu_ep(comm->peer_rank), size, deadline,
+        data, nullptr);
 
     const uint64_t rid = g_req_ids.fetch_add(1);
-    g_requests[rid] =
-        PluginRequest{tid, size, false, static_cast<int>(size), mhandle, data, is_cuda};
+    g_requests[rid] = PluginRequest{tid,    size,  false, static_cast<int>(size),
+                                    mhandle, data, nullptr, is_cuda, comm->rail};
     *request = reinterpret_cast<void*>(rid);
     return ncclSuccess;
 }
@@ -219,13 +243,23 @@ ncclResult_t plugin_irecv(void* recvComm, int n, void** data, size_t* sizes, int
     }
 
     const TrafficClass cls = classify_tag(tag, size);
+    // Pair with a pending send that has src but no dst (same-process demo path)
+    void* src = nullptr;
+    for (auto& kv : g_requests) {
+        if (!kv.second.done && kv.second.data && !kv.second.peer_buf &&
+            kv.second.size == size) {
+            src = kv.second.data;
+            kv.second.peer_buf = buf;
+            break;
+        }
+    }
     TransferId tid = g_shim->submit_transfer(
         cls, gpu_ep(comm->peer_rank), gpu_ep(comm->local_gpu), size,
-        cls == TrafficClass::TensorParallel ? 50.0 : 5e4);
+        cls == TrafficClass::TensorParallel ? 50.0 : 5e4, src, buf);
 
     const uint64_t rid = g_req_ids.fetch_add(1);
-    g_requests[rid] =
-        PluginRequest{tid, size, false, static_cast<int>(size), mhandle, buf, is_cuda};
+    g_requests[rid] = PluginRequest{tid,    size, false, static_cast<int>(size),
+                                    mhandle, buf, src,   is_cuda, comm->rail};
     *request = reinterpret_cast<void*>(rid);
     return ncclSuccess;
 }

@@ -49,7 +49,12 @@ struct EdgeAttributes {
     double bandwidth_gbps;   // peak bandwidth (GB/s)
     double latency_us;       // baseline latency (µs)
     double contention_alpha;
+    int rail_id{-1};         // 0/1 for dual IB rails; -1 = N/A
 };
+
+// Default KV striping / suspension quantum
+inline constexpr uint64_t kKvChunkBytes = 256ull * 1024ull * 1024ull;
+inline constexpr int kIbRailCount = 2;
 
 struct TransferRequest {
     EndpointId source;
@@ -76,18 +81,18 @@ inline double contention_exponent(FabricType fabric) {
 }
 
 // Default fabric bandwidth/latency; override per deployment as needed.
-inline EdgeAttributes default_fabric_attrs(FabricType fabric) {
+inline EdgeAttributes default_fabric_attrs(FabricType fabric, int rail_id = -1) {
     switch (fabric) {
         case FabricType::NVLink:
-            return {FabricType::NVLink, 900.0, 1.0, 1.4};
+            return {FabricType::NVLink, 900.0, 1.0, 1.4, -1};
         case FabricType::PCIe:
-            return {FabricType::PCIe, 64.0, 3.0, 2.1};
+            return {FabricType::PCIe, 64.0, 3.0, 2.1, -1};
         case FabricType::CXL:
-            return {FabricType::CXL, 50.0, 5.0, 2.1};
+            return {FabricType::CXL, 50.0, 5.0, 2.1, -1};
         case FabricType::InfiniBand:
-            return {FabricType::InfiniBand, 50.0, 5.0, 1.8};
+            return {FabricType::InfiniBand, 50.0, 5.0, 1.8, rail_id};
     }
-    return {FabricType::InfiniBand, 50.0, 5.0, 1.8};
+    return {FabricType::InfiniBand, 50.0, 5.0, 1.8, rail_id};
 }
 
 }  // namespace hics

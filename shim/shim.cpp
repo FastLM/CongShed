@@ -1,5 +1,6 @@
 #include "shim/shim.hpp"
 #include "shim/ucx_transport.hpp"
+#include "shim/ibverbs_transport.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -26,6 +27,9 @@ bool HICSShim::initialize(const InitOptions& opts) {
         TopologyGraph::build_cluster(opts.num_nodes, opts.gpus_per_node));
     graph_->precompute_paths(6, 5);
 
+    // Dual-rail ibverbs / host-memcpy backend for real KV buffer movement
+    IbverbsTransport::instance().init(kIbRailCount);
+
     predictor_ = std::make_unique<LSTMPredictor>();
     if (!opts.weights_path.empty()) {
         if (!predictor_->load_weights(opts.weights_path)) {
@@ -36,15 +40,18 @@ bool HICSShim::initialize(const InitOptions& opts) {
 
     std::vector<FabricType> fabrics;
     std::vector<double> peak_bw;
+    std::vector<int> rail_ids;
     fabrics.reserve(graph_->edges().size());
     peak_bw.reserve(graph_->edges().size());
+    rail_ids.reserve(graph_->edges().size());
     for (const auto& e : graph_->edges()) {
         fabrics.push_back(e.attrs.fabric);
         peak_bw.push_back(e.attrs.bandwidth_gbps);
+        rail_ids.push_back(e.attrs.rail_id);
     }
 
     telemetry_ = std::make_unique<TelemetryDaemon>(graph_->edges().size(), opts.telemetry);
-    telemetry_->configure_edges(fabrics, peak_bw);
+    telemetry_->configure_edges(fabrics, peak_bw, rail_ids);
 
     path_engine_ = std::make_unique<PathSelectionEngine>(*graph_, *predictor_);
 
@@ -112,8 +119,8 @@ PathCost HICSShim::dispatch_transfer(const TransferRequest& req) {
 
     PathCost result;
     if (req.traffic_class == TrafficClass::KVMigration &&
-        req.size_bytes > 1024ull * 1024ull * 1024ull) {
-        auto chunks = path_engine_->stripe_kv_migration(req, utils);
+        req.size_bytes > kKvChunkBytes) {
+        auto chunks = path_engine_->stripe_kv_migration(req, utils, kKvChunkBytes);
         if (!chunks.empty()) result = {chunks[0].edge_indices, 0.0};
         for (const auto& c : chunks) {
             result.latency_us += path_engine_
@@ -134,14 +141,15 @@ PathCost HICSShim::dispatch_transfer(const TransferRequest& req) {
 }
 
 TransferId HICSShim::submit_transfer(TrafficClass cls, EndpointId src, EndpointId dst,
-                                     uint64_t size_bytes, double deadline_us) {
+                                     uint64_t size_bytes, double deadline_us,
+                                     void* src_buf, void* dst_buf) {
     TransferRequest req{src, dst, size_bytes, cls, deadline_us};
     auto t0 = std::chrono::steady_clock::now();
     auto utils = telemetry_->ring_buffer().snapshot(graph_->edges().size());
 
     TransferId id = 0;
     if (executor_ && path_engine_) {
-        id = path_engine_->schedule_and_execute(req, utils);
+        id = path_engine_->schedule_and_execute(req, utils, {src_buf, dst_buf});
         executor_->tick(0.05, utils);
     } else {
         dispatch_transfer(req);

@@ -31,12 +31,16 @@ pub struct EndpointId {
     pub endpoint_type: EndpointType,
 }
 
+pub const KV_CHUNK_BYTES: u64 = 256 * 1024 * 1024;
+pub const IB_RAIL_COUNT: i32 = 2;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct EdgeAttributes {
     pub fabric: FabricType,
     pub bandwidth_gbps: f64,
     pub latency_us: f64,
     pub contention_alpha: f64,
+    pub rail_id: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,30 +69,38 @@ impl FabricType {
 
     /// Default fabric bandwidth/latency; override per deployment as needed.
     pub fn default_attrs(self) -> EdgeAttributes {
+        self.default_attrs_rail(-1)
+    }
+
+    pub fn default_attrs_rail(self, rail_id: i32) -> EdgeAttributes {
         match self {
             FabricType::NvLink => EdgeAttributes {
                 fabric: self,
                 bandwidth_gbps: 900.0,
                 latency_us: 1.0,
                 contention_alpha: 1.4,
+                rail_id: -1,
             },
             FabricType::Pcie => EdgeAttributes {
                 fabric: self,
                 bandwidth_gbps: 64.0,
                 latency_us: 3.0,
                 contention_alpha: 2.1,
+                rail_id: -1,
             },
             FabricType::Cxl => EdgeAttributes {
                 fabric: self,
                 bandwidth_gbps: 50.0,
                 latency_us: 5.0,
                 contention_alpha: 2.1,
+                rail_id: -1,
             },
             FabricType::InfiniBand => EdgeAttributes {
                 fabric: self,
                 bandwidth_gbps: 50.0,
                 latency_us: 5.0,
                 contention_alpha: 1.8,
+                rail_id,
             },
         }
     }

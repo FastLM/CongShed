@@ -144,16 +144,22 @@ impl TopologyGraph {
             local_id: 0,
             endpoint_type: EndpointType::CxlController,
         });
-        let ib = g.add_vertex(EndpointId {
+        let ib0 = g.add_vertex(EndpointId {
             node_id,
             local_id: 0,
+            endpoint_type: EndpointType::IbPort,
+        });
+        let ib1 = g.add_vertex(EndpointId {
+            node_id,
+            local_id: 1,
             endpoint_type: EndpointType::IbPort,
         });
 
         let nvlink = FabricType::NvLink.default_attrs();
         let pcie = FabricType::Pcie.default_attrs();
         let cxl_attrs = FabricType::Cxl.default_attrs();
-        let ib_attrs = FabricType::InfiniBand.default_attrs();
+        let ib_r0 = FabricType::InfiniBand.default_attrs_rail(0);
+        let ib_r1 = FabricType::InfiniBand.default_attrs_rail(1);
 
         for &i in &gpu_verts {
             for &j in &gpu_verts {
@@ -167,17 +173,22 @@ impl TopologyGraph {
             g.add_edge(cpu, gv, pcie);
             g.add_edge(gv, cxl, cxl_attrs);
             g.add_edge(cxl, gv, cxl_attrs);
-            g.add_edge(gv, ib, ib_attrs);
-            g.add_edge(ib, gv, ib_attrs);
+            g.add_edge(gv, ib0, ib_r0);
+            g.add_edge(ib0, gv, ib_r0);
+            g.add_edge(gv, ib1, ib_r1);
+            g.add_edge(ib1, gv, ib_r1);
         }
-        g.add_edge(cpu, ib, pcie);
-        g.add_edge(ib, cpu, pcie);
+        g.add_edge(cpu, ib0, pcie);
+        g.add_edge(ib0, cpu, pcie);
+        g.add_edge(cpu, ib1, pcie);
+        g.add_edge(ib1, cpu, pcie);
         g
     }
 
     pub fn build_cluster(num_nodes: u32, gpus_per_node: u32) -> Self {
         let mut cluster = Self::new();
-        let mut node_ib = Vec::new();
+        let mut node_ib0 = Vec::new();
+        let mut node_ib1 = Vec::new();
 
         for n in 0..num_nodes {
             let node = Self::build_h100_node(n, gpus_per_node);
@@ -192,14 +203,18 @@ impl TopologyGraph {
                     e.attrs,
                 );
             }
-            node_ib.push(base + gpus_per_node + 2);
+            node_ib0.push(base + gpus_per_node + 2);
+            node_ib1.push(base + gpus_per_node + 3);
         }
 
-        let ib = FabricType::InfiniBand.default_attrs();
+        let ib_r0 = FabricType::InfiniBand.default_attrs_rail(0);
+        let ib_r1 = FabricType::InfiniBand.default_attrs_rail(1);
         for i in 0..num_nodes as usize {
             for j in (i + 1)..num_nodes as usize {
-                cluster.add_edge(node_ib[i], node_ib[j], ib);
-                cluster.add_edge(node_ib[j], node_ib[i], ib);
+                cluster.add_edge(node_ib0[i], node_ib0[j], ib_r0);
+                cluster.add_edge(node_ib0[j], node_ib0[i], ib_r0);
+                cluster.add_edge(node_ib1[i], node_ib1[j], ib_r1);
+                cluster.add_edge(node_ib1[j], node_ib1[i], ib_r1);
             }
         }
         cluster

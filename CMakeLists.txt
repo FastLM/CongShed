@@ -16,6 +16,7 @@ set(HICS_SOURCES
     path_engine/path_engine.cpp
     transfer/transfer_executor.cpp
     shim/cuda_mr.cpp
+    shim/ibverbs_transport.cpp
     shim/shim.cpp
     shim/ucx_transport.cpp
     shim/nccl_plugin.cpp
@@ -32,6 +33,9 @@ endif()
 add_executable(hics_demo apps/main.cpp)
 target_link_libraries(hics_demo PRIVATE hics_core)
 
+add_executable(kv_migration_demo apps/kv_migration_demo.cpp)
+target_link_libraries(kv_migration_demo PRIVATE hics_core)
+
 # NCCL plugin shared library (NCCL_NET_PLUGIN / LD_PRELOAD)
 add_library(hics_nccl_plugin SHARED ${HICS_SOURCES})
 target_include_directories(hics_nccl_plugin PUBLIC ${CMAKE_SOURCE_DIR})
@@ -42,7 +46,7 @@ if(HICS_HAVE_NCCL)
     target_compile_definitions(hics_nccl_plugin PUBLIC HICS_HAVE_NCCL_NET_H=1)
 endif()
 
-install(TARGETS hics_core hics_demo hics_nccl_plugin
+install(TARGETS hics_core hics_demo kv_migration_demo hics_nccl_plugin
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin
 )

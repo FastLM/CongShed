@@ -99,12 +99,14 @@ class TopologyGraph:
         ]
         cpu = g.add_vertex(EndpointId(node_id, 0, EndpointType.CPU))
         cxl = g.add_vertex(EndpointId(node_id, 0, EndpointType.CXL_CONTROLLER))
-        ib = g.add_vertex(EndpointId(node_id, 0, EndpointType.IB_PORT))
+        ib0 = g.add_vertex(EndpointId(node_id, 0, EndpointType.IB_PORT))
+        ib1 = g.add_vertex(EndpointId(node_id, 1, EndpointType.IB_PORT))
 
         nvlink = FabricType.default_attrs(FabricType.NVLINK)
         pcie = FabricType.default_attrs(FabricType.PCIE)
         cxl_attrs = FabricType.default_attrs(FabricType.CXL)
-        ib_attrs = FabricType.default_attrs(FabricType.INFINIBAND)
+        ib_r0 = FabricType.default_attrs(FabricType.INFINIBAND, rail_id=0)
+        ib_r1 = FabricType.default_attrs(FabricType.INFINIBAND, rail_id=1)
 
         for i in gpu_verts:
             for j in gpu_verts:
@@ -115,10 +117,14 @@ class TopologyGraph:
             g.add_edge(cpu, gv, pcie)
             g.add_edge(gv, cxl, cxl_attrs)
             g.add_edge(cxl, gv, cxl_attrs)
-            g.add_edge(gv, ib, ib_attrs)
-            g.add_edge(ib, gv, ib_attrs)
-        g.add_edge(cpu, ib, pcie)
-        g.add_edge(ib, cpu, pcie)
+            g.add_edge(gv, ib0, ib_r0)
+            g.add_edge(ib0, gv, ib_r0)
+            g.add_edge(gv, ib1, ib_r1)
+            g.add_edge(ib1, gv, ib_r1)
+        g.add_edge(cpu, ib0, pcie)
+        g.add_edge(ib0, cpu, pcie)
+        g.add_edge(cpu, ib1, pcie)
+        g.add_edge(ib1, cpu, pcie)
         return g
 
     @classmethod
@@ -126,7 +132,8 @@ class TopologyGraph:
         cls, num_nodes: int = 8, gpus_per_node: int = 8
     ) -> "TopologyGraph":
         cluster = cls()
-        node_ib: List[int] = []
+        node_ib0: List[int] = []
+        node_ib1: List[int] = []
 
         for n in range(num_nodes):
             node = cls.build_h100_node(n, gpus_per_node)
@@ -137,13 +144,18 @@ class TopologyGraph:
                 cluster.add_edge(
                     e.src_vertex + base, e.dst_vertex + base, e.attrs
                 )
-            node_ib.append(base + gpus_per_node + 2)
+            # GPU×N + CPU + CXL + IB0 + IB1
+            node_ib0.append(base + gpus_per_node + 2)
+            node_ib1.append(base + gpus_per_node + 3)
 
-        ib = FabricType.default_attrs(FabricType.INFINIBAND)
+        ib_r0 = FabricType.default_attrs(FabricType.INFINIBAND, rail_id=0)
+        ib_r1 = FabricType.default_attrs(FabricType.INFINIBAND, rail_id=1)
         for i in range(num_nodes):
             for j in range(i + 1, num_nodes):
-                cluster.add_edge(node_ib[i], node_ib[j], ib)
-                cluster.add_edge(node_ib[j], node_ib[i], ib)
+                cluster.add_edge(node_ib0[i], node_ib0[j], ib_r0)
+                cluster.add_edge(node_ib0[j], node_ib0[i], ib_r0)
+                cluster.add_edge(node_ib1[i], node_ib1[j], ib_r1)
+                cluster.add_edge(node_ib1[j], node_ib1[i], ib_r1)
         return cluster
 
     def to_networkx(self):

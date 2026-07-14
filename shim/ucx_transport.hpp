@@ -43,13 +43,14 @@ public:
     // uct_ep_create analogue
     bool create_ep(const EndpointId& local, const EndpointId& remote, UcxEndpoint& out);
 
-    // zcopy put / get used for KV cache chunks
+    // zcopy put / get used for KV cache chunks. When `remote` is set, bytes
+    // are actually copied/RDMA'd via the dual-rail ibverbs backend.
     int zcopy_put(UcxEndpoint& ep, const void* buf, size_t len, UcxRequest& req,
                   TrafficClass cls = TrafficClass::KVMigration,
-                  double deadline_us = -1.0);
+                  double deadline_us = -1.0, void* remote = nullptr);
     int zcopy_get(UcxEndpoint& ep, void* buf, size_t len, UcxRequest& req,
                   TrafficClass cls = TrafficClass::KVMigration,
-                  double deadline_us = -1.0);
+                  double deadline_us = -1.0, const void* remote = nullptr);
 
     // Progress engine — drains transfer executor
     unsigned progress(double dt_ms = 0.2);

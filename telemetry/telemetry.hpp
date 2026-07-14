@@ -52,9 +52,10 @@ public:
     void start();
     void stop();
 
-    // Bind edges to fabric types / peak BW before start()
+    // Bind edges to fabric types / peak BW / IB rail ids before start()
     void configure_edges(const std::vector<FabricType>& fabrics,
-                         const std::vector<double>& peak_bw_gbps);
+                         const std::vector<double>& peak_bw_gbps,
+                         const std::vector<int>& rail_ids = {});
 
     TelemetryRingBuffer& ring_buffer() { return ring_; }
     const TelemetryRingBuffer& ring_buffer() const { return ring_; }

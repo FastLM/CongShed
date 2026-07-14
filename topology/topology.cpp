@@ -105,12 +105,15 @@ TopologyGraph TopologyGraph::build_h100_node(uint32_t node_id, uint32_t num_gpus
     }
     uint32_t cpu = g.add_vertex({node_id, 0, EndpointType::CPU});
     uint32_t cxl = g.add_vertex({node_id, 0, EndpointType::CXLController});
-    uint32_t ib = g.add_vertex({node_id, 0, EndpointType::IBPort});
+    // Dual IB rail: local_id 0 → rail0 (mlx5_0), local_id 1 → rail1 (mlx5_1)
+    uint32_t ib0 = g.add_vertex({node_id, 0, EndpointType::IBPort});
+    uint32_t ib1 = g.add_vertex({node_id, 1, EndpointType::IBPort});
 
     auto nvlink = default_fabric_attrs(FabricType::NVLink);
     auto pcie = default_fabric_attrs(FabricType::PCIe);
     auto cxl_attrs = default_fabric_attrs(FabricType::CXL);
-    auto ib_attrs = default_fabric_attrs(FabricType::InfiniBand);
+    auto ib_r0 = default_fabric_attrs(FabricType::InfiniBand, 0);
+    auto ib_r1 = default_fabric_attrs(FabricType::InfiniBand, 1);
 
     // NVLink all-to-all within node
     for (uint32_t i = 0; i < num_gpus; ++i) {
@@ -118,17 +121,21 @@ TopologyGraph TopologyGraph::build_h100_node(uint32_t node_id, uint32_t num_gpus
             if (i != j) g.add_edge(gpu_verts[i], gpu_verts[j], nvlink);
         }
     }
-    // PCIe GPU-CPU
+    // PCIe GPU-CPU / CXL + dual-rail GPU↔IB
     for (auto gv : gpu_verts) {
         g.add_edge(gv, cpu, pcie);
         g.add_edge(cpu, gv, pcie);
         g.add_edge(gv, cxl, cxl_attrs);
         g.add_edge(cxl, gv, cxl_attrs);
-        g.add_edge(gv, ib, ib_attrs);
-        g.add_edge(ib, gv, ib_attrs);
+        g.add_edge(gv, ib0, ib_r0);
+        g.add_edge(ib0, gv, ib_r0);
+        g.add_edge(gv, ib1, ib_r1);
+        g.add_edge(ib1, gv, ib_r1);
     }
-    g.add_edge(cpu, ib, pcie);
-    g.add_edge(ib, cpu, pcie);
+    g.add_edge(cpu, ib0, pcie);
+    g.add_edge(ib0, cpu, pcie);
+    g.add_edge(cpu, ib1, pcie);
+    g.add_edge(ib1, cpu, pcie);
 
     return g;
 }
@@ -136,7 +143,8 @@ TopologyGraph TopologyGraph::build_h100_node(uint32_t node_id, uint32_t num_gpus
 TopologyGraph TopologyGraph::build_cluster(uint32_t num_nodes, uint32_t gpus_per_node) {
     TopologyGraph cluster;
     std::vector<std::vector<uint32_t>> node_gpus(num_nodes);
-    std::vector<uint32_t> node_ib(num_nodes);
+    std::vector<uint32_t> node_ib0(num_nodes);
+    std::vector<uint32_t> node_ib1(num_nodes);
 
     for (uint32_t n = 0; n < num_nodes; ++n) {
         auto node = build_h100_node(n, gpus_per_node);
@@ -148,14 +156,20 @@ TopologyGraph TopologyGraph::build_cluster(uint32_t num_nodes, uint32_t gpus_per
         for (uint32_t g = 0; g < gpus_per_node; ++g) {
             node_gpus[n].push_back(base + g);
         }
-        node_ib[n] = base + gpus_per_node + 2;  // GPU×N + CPU + CXL + IB
+        // Layout: GPU×N + CPU + CXL + IB0 + IB1
+        node_ib0[n] = base + gpus_per_node + 2;
+        node_ib1[n] = base + gpus_per_node + 3;
     }
 
-    auto ib = default_fabric_attrs(FabricType::InfiniBand);
+    auto ib_r0 = default_fabric_attrs(FabricType::InfiniBand, 0);
+    auto ib_r1 = default_fabric_attrs(FabricType::InfiniBand, 1);
+    // Rail-isolated inter-node fabric: rail0↔rail0, rail1↔rail1
     for (uint32_t i = 0; i < num_nodes; ++i) {
         for (uint32_t j = i + 1; j < num_nodes; ++j) {
-            cluster.add_edge(node_ib[i], node_ib[j], ib);
-            cluster.add_edge(node_ib[j], node_ib[i], ib);
+            cluster.add_edge(node_ib0[i], node_ib0[j], ib_r0);
+            cluster.add_edge(node_ib0[j], node_ib0[i], ib_r0);
+            cluster.add_edge(node_ib1[i], node_ib1[j], ib_r1);
+            cluster.add_edge(node_ib1[j], node_ib1[i], ib_r1);
         }
     }
     return cluster;

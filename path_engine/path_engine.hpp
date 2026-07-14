@@ -41,14 +41,18 @@ public:
         uint32_t chunk_seq;
         std::vector<uint32_t> edge_indices;
         uint64_t chunk_size;
+        uint64_t byte_offset{0};
+        int rail_id{-1};
     };
     std::vector<ChunkDispatch> stripe_kv_migration(
         const TransferRequest& req, const std::vector<float>& current_utils,
-        uint64_t chunk_size = 256 * 1024 * 1024);
+        uint64_t chunk_size = kKvChunkBytes);
 
-    // Full schedule: select path(s), submit to executor, preempt if needed
+    // Full schedule: select path(s), submit to executor, preempt if needed.
+    // Optional src/dst buffers enable real KV byte movement via ibverbs backend.
     TransferId schedule_and_execute(const TransferRequest& req,
-                                    const std::vector<float>& current_utils);
+                                    const std::vector<float>& current_utils,
+                                    const SubmitOptions& opts = {});
 
     void set_utilization(const std::vector<float>& utils) { utils_ = utils; }
 

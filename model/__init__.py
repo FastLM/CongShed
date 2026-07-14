@@ -23,7 +23,9 @@ class FabricType(Enum):
         }[self]
 
     @classmethod
-    def default_attrs(cls, fabric: "FabricType") -> "EdgeAttributes":
+    def default_attrs(
+        cls, fabric: "FabricType", rail_id: int = -1
+    ) -> "EdgeAttributes":
         """Default bandwidth/latency; override per deployment as needed."""
         defaults = {
             FabricType.NVLINK: (900.0, 1.0),
@@ -37,6 +39,7 @@ class FabricType(Enum):
             bandwidth_gbps=bw,
             latency_us=lat,
             contention_alpha=fabric.contention_alpha,
+            rail_id=rail_id if fabric == FabricType.INFINIBAND else -1,
         )
 
 
@@ -60,12 +63,17 @@ class EndpointId:
     endpoint_type: EndpointType
 
 
+KV_CHUNK_BYTES = 256 * 1024 * 1024
+IB_RAIL_COUNT = 2
+
+
 @dataclass
 class EdgeAttributes:
     fabric: FabricType
     bandwidth_gbps: float
     latency_us: float
     contention_alpha: float
+    rail_id: int = -1
 
 
 @dataclass
