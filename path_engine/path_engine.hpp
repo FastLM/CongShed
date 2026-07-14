@@ -32,10 +32,15 @@ public:
                           const std::vector<uint32_t>& edges);
     void unregister_kv_flow(TransferId id);
 
-    // Pause KV migrations sharing path edges; optionally reroute them
+    // Request chunk-boundary suspend for KV migrations sharing path edges.
+    // When `reroute` is true, remaining chunks are rerouted after the boundary
+    // pause completes (see drain_boundary_reroutes).
     std::vector<TransferId> preempt_kv_migrations(
         uint32_t src, uint32_t dst, const std::vector<uint32_t>& path_edges,
         const std::vector<float>& current_utils, bool reroute = true);
+
+    // After boundary suspend, pick cooler rails for paused KV flows.
+    size_t drain_boundary_reroutes(const std::vector<float>& current_utils);
 
     struct ChunkDispatch {
         uint32_t chunk_seq;
@@ -80,6 +85,12 @@ private:
         std::vector<uint32_t> edges;
     };
     std::vector<KVMigrationFlow> kv_flows_;
+
+    struct PendingReroute {
+        TransferId id{0};
+        std::vector<uint32_t> avoid_edges;
+    };
+    std::vector<PendingReroute> pending_reroutes_;
 };
 
 }  // namespace hics

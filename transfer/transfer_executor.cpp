@@ -340,6 +340,14 @@ std::vector<TransferId> TransferExecutor::tick(double dt_ms,
         const double elapsed_us = (now_ns() - tp.started_ns) / 1000.0;
         tp.slack_us = tp.request.deadline_us - elapsed_us;
 
+        if (tp.bytes_remaining == 0) {
+            for (auto& ch : tp.chunks) ch.state = TransferState::Completed;
+            tp.suspend_at_boundary = false;
+            complete_locked(tp);
+            done.push_back(tp.id);
+            continue;
+        }
+
         if (tp.suspend_at_boundary) {
             bool draining = false;
             for (const auto& ch : tp.chunks) {
@@ -355,12 +363,6 @@ std::vector<TransferId> TransferExecutor::tick(double dt_ms,
                 continue;
             }
             tp.state = TransferState::SuspendPending;
-        }
-
-        if (tp.bytes_remaining == 0) {
-            for (auto& ch : tp.chunks) ch.state = TransferState::Completed;
-            complete_locked(tp);
-            done.push_back(tp.id);
         }
     }
     IbverbsTransport::instance().poll(32);

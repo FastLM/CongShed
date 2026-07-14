@@ -66,8 +66,8 @@ int main(int argc, char** argv) {
     }
     std::cout << "Telemetry: " << shim.telemetry().active_backend_name() << "\n";
 
-    // --- 1) Real KV buffer transfer with 512 MiB (2 × 256 MiB chunks) ---
-    const uint64_t kv_bytes = 512 * kMiB;
+    // --- 1) Real KV buffer transfer with 768 MiB (3 × 256 MiB chunks) ---
+    const uint64_t kv_bytes = 768 * kMiB;
     std::vector<uint8_t> src(kv_bytes), dst(kv_bytes, 0);
     fill_pattern(src, 0xA5);
 
@@ -99,10 +99,20 @@ int main(int argc, char** argv) {
     }
 
     // --- 2) Mid-transfer TP pressure → chunk-boundary suspend + reroute ---
-    for (int i = 0; i < 5; ++i) shim.poll_transfers(2.0);
+    // Small warmup so later chunks stay Pending and get boundary-paused.
+    for (int i = 0; i < 2; ++i) shim.poll_transfers(1.0);
     auto mid = shim.transfer_status(tid);
     std::cout << "\nAfter warmup: sent=" << (mid.bytes_sent / kMiB) << " MiB"
-              << " state=" << static_cast<int>(mid.state) << "\n";
+              << " state=" << static_cast<int>(mid.state)
+              << " chunks_inflight=";
+    {
+        int n = 0;
+        for (const auto& ch : mid.chunks)
+            if (ch.state == hics::TransferState::InFlight ||
+                ch.state == hics::TransferState::Pending)
+                ++n;
+        std::cout << n << "\n";
+    }
 
     // Tight TP deadline on an overlapping path triggers preemption
     for (int i = 0; i < 8; ++i) {
@@ -113,7 +123,15 @@ int main(int argc, char** argv) {
             4 * kMiB, 5.0);
     }
 
-    for (int i = 0; i < 400; ++i) shim.poll_transfers(1.0);
+    // Drain through chunk-boundary suspend → telemetry rail reroute → complete
+    for (int i = 0; i < 20000; ++i) {
+        shim.poll_transfers(1.0);
+        auto st = shim.transfer_status(tid);
+        if (st.state == hics::TransferState::Completed ||
+            st.state == hics::TransferState::Cancelled) {
+            break;
+        }
+    }
 
     auto done = shim.transfer_status(tid);
     const bool ok = verify_prefix(src, dst, static_cast<size_t>(kv_bytes));

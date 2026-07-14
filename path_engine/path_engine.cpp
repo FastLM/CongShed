@@ -143,62 +143,16 @@ std::vector<TransferId> PathSelectionEngine::preempt_kv_migrations(
     const std::vector<float>& current_utils, bool do_reroute) {
     (void)src;
     (void)dst;
+    (void)current_utils;
     std::vector<TransferId> paused_ids;
 
     if (executor_) {
+        // Suspend at next 256 MB chunk boundary; defer rail switch until paused.
         paused_ids = executor_->preempt_sharing(path_edges);
         preempt_events_ += paused_ids.size();
-
         if (do_reroute) {
             for (TransferId id : paused_ids) {
-                auto prog = executor_->get(id);
-                TransferRequest alt = prog.request;
-                // Remaining bytes after completed chunks only
-                uint64_t remain = prog.bytes_remaining;
-                if (remain == 0) continue;
-
-                auto utils = current_utils;
-                for (uint32_t e : path_edges) {
-                    if (e < utils.size()) utils[e] = std::min(0.99f, utils[e] + 0.5f);
-                }
-                uint32_t s = graph_.vertex_of(alt.source);
-                uint32_t d = graph_.vertex_of(alt.dest);
-                auto candidates = flexibility_set(graph_, s, d, alt.traffic_class);
-                PathCost best{{}, std::numeric_limits<double>::max()};
-                std::unordered_set<uint32_t> busy(path_edges.begin(), path_edges.end());
-                const int busy_rail = path_rail_id(graph_, path_edges);
-
-                for (const auto& path : candidates) {
-                    bool overlaps = false;
-                    for (uint32_t e : path) {
-                        if (busy.count(e)) {
-                            overlaps = true;
-                            break;
-                        }
-                    }
-                    double est = static_cast<double>(remain) / 1e9 / 50.0 * 1000.0;
-                    utils_ = utils;
-                    double cost = path_cost(path, remain, est);
-                    if (!overlaps) cost *= 0.5;
-                    // Prefer alternate rail when TP occupies the current one
-                    const int rail = path_rail_id(graph_, path);
-                    if (busy_rail >= 0 && rail >= 0 && rail != busy_rail) cost *= 0.6;
-                    cost *= (0.75 + 0.5 * path_mean_util(path, utils));
-                    if (cost < best.latency_us) best = {path, cost};
-                }
-                if (!best.edge_indices.empty() && executor_->reroute(id, best)) {
-                    ++reroute_events_;
-                    for (auto& flow : kv_flows_) {
-                        if (flow.id == id) {
-                            flow.paused = false;
-                            flow.edges = best.edge_indices;
-                            flow.bytes_remaining = remain;
-                            flow.slack_us = best.latency_us > 0
-                                                ? alt.deadline_us - best.latency_us
-                                                : flow.slack_us;
-                        }
-                    }
-                }
+                pending_reroutes_.push_back({id, path_edges});
             }
         }
         return paused_ids;
@@ -224,6 +178,81 @@ std::vector<TransferId> PathSelectionEngine::preempt_kv_migrations(
         ++preempt_events_;
     }
     return paused_ids;
+}
+
+size_t PathSelectionEngine::drain_boundary_reroutes(
+    const std::vector<float>& current_utils) {
+    if (!executor_ || pending_reroutes_.empty()) return 0;
+    size_t done = 0;
+    std::vector<PendingReroute> still;
+    still.reserve(pending_reroutes_.size());
+
+    for (const auto& pr : pending_reroutes_) {
+        auto prog = executor_->get(pr.id);
+        if (prog.state == TransferState::Completed ||
+            prog.state == TransferState::Cancelled) {
+            ++done;
+            continue;
+        }
+        // Wait until chunk-boundary suspend has taken effect
+        if (prog.state != TransferState::Paused) {
+            still.push_back(pr);
+            continue;
+        }
+        uint64_t remain = prog.bytes_remaining;
+        if (remain == 0) {
+            ++done;
+            continue;
+        }
+
+        TransferRequest alt = prog.request;
+        auto utils = current_utils;
+        for (uint32_t e : pr.avoid_edges) {
+            if (e < utils.size()) utils[e] = std::min(0.99f, utils[e] + 0.5f);
+        }
+        uint32_t s = graph_.vertex_of(alt.source);
+        uint32_t d = graph_.vertex_of(alt.dest);
+        auto candidates = flexibility_set(graph_, s, d, alt.traffic_class);
+        PathCost best{{}, std::numeric_limits<double>::max()};
+        std::unordered_set<uint32_t> busy(pr.avoid_edges.begin(), pr.avoid_edges.end());
+        const int busy_rail = path_rail_id(graph_, pr.avoid_edges);
+
+        for (const auto& path : candidates) {
+            bool overlaps = false;
+            for (uint32_t e : path) {
+                if (busy.count(e)) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            double est = static_cast<double>(remain) / 1e9 / 50.0 * 1000.0;
+            utils_ = utils;
+            double cost = path_cost(path, remain, est);
+            if (!overlaps) cost *= 0.5;
+            const int rail = path_rail_id(graph_, path);
+            if (busy_rail >= 0 && rail >= 0 && rail != busy_rail) cost *= 0.6;
+            cost *= (0.75 + 0.5 * path_mean_util(path, utils));
+            if (cost < best.latency_us) best = {path, cost};
+        }
+        if (!best.edge_indices.empty() && executor_->reroute(pr.id, best)) {
+            ++reroute_events_;
+            ++done;
+            for (auto& flow : kv_flows_) {
+                if (flow.id == pr.id) {
+                    flow.paused = false;
+                    flow.edges = best.edge_indices;
+                    flow.bytes_remaining = remain;
+                    flow.slack_us = best.latency_us > 0
+                                        ? alt.deadline_us - best.latency_us
+                                        : flow.slack_us;
+                }
+            }
+        } else {
+            still.push_back(pr);
+        }
+    }
+    pending_reroutes_ = std::move(still);
+    return done;
 }
 
 std::vector<PathSelectionEngine::ChunkDispatch>

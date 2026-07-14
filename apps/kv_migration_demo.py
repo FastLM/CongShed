@@ -15,13 +15,43 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import types
 
-# Prefer in-repo package
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
 
-from hics.path_engine import PathSelectionEngine  # noqa: E402
-from hics.profiler import TopologyProfiler  # noqa: E402
-from hics.types import EndpointId, EndpointType, TrafficClass, TransferRequest  # noqa: E402
+# In-tree package-dir layout (same as pyproject.toml) without pip install
+_hics = types.ModuleType("hics")
+_hics.__path__ = [_ROOT]  # mark as package
+sys.modules["hics"] = _hics
+
+import model as _model  # noqa: E402
+
+sys.modules["hics.types"] = _model
+_hics.types = _model
+
+import topology as _topology  # noqa: E402
+
+sys.modules["hics.topology"] = _topology
+_hics.topology = _topology
+
+import lstm as _lstm  # noqa: E402
+
+sys.modules["hics.lstm"] = _lstm
+_hics.lstm = _lstm
+
+import path_engine as _path_engine  # noqa: E402
+
+sys.modules["hics.path_engine"] = _path_engine
+
+from path_engine import PathSelectionEngine  # noqa: E402
+from topology import TopologyGraph  # noqa: E402
+from model import (  # noqa: E402
+    EndpointId,
+    EndpointType,
+    TrafficClass,
+    TransferRequest,
+)
 
 KV_CHUNK = 256 * 1024 * 1024
 
@@ -44,17 +74,14 @@ def main() -> int:
     ap.add_argument("--kv-mib", type=int, default=512, help="KV payload size in MiB")
     args = ap.parse_args()
 
-    profiler = TopologyProfiler(num_nodes=2, gpus_per_node=8)
-    graph, _ = profiler.run_sweep()
+    graph = TopologyGraph.build_cluster(num_nodes=2, gpus_per_node=8)
+    graph.precompute_paths()
     engine = PathSelectionEngine(graph)
 
     utils = [0.3] * len(graph.edges)
-    # Bias rail-like IB edges hotter on even indices (proxy for rail0)
     for i, e in enumerate(graph.edges):
-        if getattr(e.attrs, "fabric", None) is not None:
-            name = str(e.attrs.fabric)
-            if "InfiniBand" in name or "IB" in name:
-                utils[i] = 0.9 if (i % 2 == 0) else 0.1
+        if e.attrs.fabric.name == "INFINIBAND":
+            utils[i] = 0.9 if e.attrs.rail_id == 0 else 0.1
 
     kv_bytes = args.kv_mib * 1024 * 1024
     req = TransferRequest(
@@ -67,18 +94,15 @@ def main() -> int:
 
     print("=== HICS KV migration demo (Python / framework conventions) ===")
     print(f"classify(tag={TAG_KV}, size={args.kv_mib}MiB) → {req.traffic_class}")
-    print(f"NCCL_NET_PLUGIN tip: export NCCL_NET_PLUGIN=./libhics_nccl.so")
+    print("NCCL_NET_PLUGIN tip: export NCCL_NET_PLUGIN=./libhics_nccl.so")
+    print(f"dual-rail IB edges present: "
+          f"{sum(1 for e in graph.edges if e.attrs.rail_id >= 0)}")
 
-    if hasattr(engine, "stripe_kv_migration"):
-        chunks = engine.stripe_kv_migration(req, utils, chunk_size=KV_CHUNK)
-        print(f"striped chunks: {len(chunks)} × ≤256 MiB")
-        for c in chunks:
-            seq = getattr(c, "chunk_seq", c.get("chunk_seq") if isinstance(c, dict) else "?")
-            size = getattr(c, "chunk_size", c.get("chunk_size") if isinstance(c, dict) else 0)
-            print(f"  chunk {seq}: {size / (1024*1024):.0f} MiB")
-    else:
-        path = engine.select_path(req, utils)
-        print(f"select_path latency_us={path.latency_us:.1f} edges={len(path.edge_indices)}")
+    chunks = engine.stripe_kv_migration(req, utils, chunk_size=KV_CHUNK)
+    print(f"striped chunks: {len(chunks)} × ≤256 MiB")
+    for c in chunks:
+        print(f"  chunk {c.chunk_seq}: {c.chunk_size / (1024*1024):.0f} MiB "
+              f"rail={c.rail_id} offset={c.byte_offset / (1024*1024):.0f} MiB")
 
     print("\nFramework wiring:")
     print("  vLLM  — load plugin via NCCL_NET_PLUGIN; KV blocks ≥256MiB auto-classed")

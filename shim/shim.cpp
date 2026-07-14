@@ -151,6 +151,7 @@ TransferId HICSShim::submit_transfer(TrafficClass cls, EndpointId src, EndpointI
     if (executor_ && path_engine_) {
         id = path_engine_->schedule_and_execute(req, utils, {src_buf, dst_buf});
         executor_->tick(0.05, utils);
+        path_engine_->drain_boundary_reroutes(utils);
     } else {
         dispatch_transfer(req);
     }
@@ -166,6 +167,8 @@ size_t HICSShim::poll_transfers(double dt_ms) {
     if (!executor_) return 0;
     auto utils = telemetry_->ring_buffer().snapshot(graph_->edges().size());
     auto done = executor_->tick(dt_ms, utils);
+    // Complete deferred rail switches after chunk-boundary suspend
+    if (path_engine_) path_engine_->drain_boundary_reroutes(utils);
     return done.size();
 }
 
